@@ -1,0 +1,482 @@
+{
+  "id": "bdf79713-d4ac-41de-b835-6a2786fdd745",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.alarms": {
+      "name": "alarms",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "device_id": {
+          "name": "device_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parameter": {
+          "name": "parameter",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "threshold": {
+          "name": "threshold",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "alarms_device_id_devices_id_fk": {
+          "name": "alarms_device_id_devices_id_fk",
+          "tableFrom": "alarms",
+          "tableTo": "devices",
+          "columnsFrom": [
+            "device_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.devices": {
+      "name": "devices",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "slave_id": {
+          "name": "slave_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nama_sensor": {
+          "name": "nama_sensor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lokasi": {
+          "name": "lokasi",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "setpoint_temp": {
+          "name": "setpoint_temp",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "setpoint_z_vel": {
+          "name": "setpoint_z_vel",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "setpoint_x_vel": {
+          "name": "setpoint_x_vel",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "setpoint_z_acc": {
+          "name": "setpoint_z_acc",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "setpoint_x_acc": {
+          "name": "setpoint_x_acc",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "connection_id": {
+          "name": "connection_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reg_temp": {
+          "name": "reg_temp",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reg_z_vel": {
+          "name": "reg_z_vel",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reg_x_vel": {
+          "name": "reg_x_vel",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reg_z_acc": {
+          "name": "reg_z_acc",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reg_x_acc": {
+          "name": "reg_x_acc",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reg_data_type": {
+          "name": "reg_data_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'float32'"
+        },
+        "reg_byte_order": {
+          "name": "reg_byte_order",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'BE'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "devices_connection_id_modbus_connections_id_fk": {
+          "name": "devices_connection_id_modbus_connections_id_fk",
+          "tableFrom": "devices",
+          "tableTo": "modbus_connections",
+          "columnsFrom": [
+            "connection_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "devices_slave_id_unique": {
+          "name": "devices_slave_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "slave_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.modbus_connections": {
+      "name": "modbus_connections",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "port_name": {
+          "name": "port_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "baud_rate": {
+          "name": "baud_rate",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 9600
+        },
+        "data_bits": {
+          "name": "data_bits",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 8
+        },
+        "stop_bits": {
+          "name": "stop_bits",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "parity": {
+          "name": "parity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
+        "timeout": {
+          "name": "timeout",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1000
+        },
+        "poll_interval": {
+          "name": "poll_interval",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 5000
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "modbus_connections_port_name_unique": {
+          "name": "modbus_connections_port_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "port_name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.sensor_logs": {
+      "name": "sensor_logs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "device_id": {
+          "name": "device_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "temperature": {
+          "name": "temperature",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "z_velocity": {
+          "name": "z_velocity",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "x_velocity": {
+          "name": "x_velocity",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "z_acceleration": {
+          "name": "z_acceleration",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "x_acceleration": {
+          "name": "x_acceleration",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "sensor_logs_device_id_devices_id_fk": {
+          "name": "sensor_logs_device_id_devices_id_fk",
+          "tableFrom": "sensor_logs",
+          "tableTo": "devices",
+          "columnsFrom": [
+            "device_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "username": {
+          "name": "username",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "password": {
+          "name": "password",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "users_username_unique": {
+          "name": "users_username_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "username"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.vibration_logs": {
+      "name": "vibration_logs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "sensor_name": {
+          "name": "sensor_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vibration_value": {
+          "name": "vibration_value",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

@@ -4,6 +4,8 @@ import MetricCard from './components/MetricCard.vue';
 import ScadaMotorSvg from './components/ScadaMotorSvg.vue';
 import TrendLineChart from './components/TrendLineChart.vue';
 import DeviceModal from './components/DeviceModal.vue';
+import ModbusConfigModal from './components/ModbusConfigModal.vue';
+import ModbusRegisterModal from './components/ModbusRegisterModal.vue';
 import { 
   DUMMY_DEVICES, 
   generateDummyTelemetries, 
@@ -14,7 +16,7 @@ import {
 } from './utils/dummyData';
 
 // --- State Router ---
-const activePage = ref<'login' | 'overview' | 'detail' | 'alarms' | 'devices'>('login');
+const activePage = ref<'login' | 'overview' | 'detail' | 'alarms' | 'devices' | 'modbus-config'>('login');
 const theme = ref<'dark' | 'light'>('dark');
 const isDummyMode = ref(false);
 
@@ -46,6 +48,14 @@ const trendEnd = ref<string | undefined>(undefined);
 // --- Modals State ---
 const showDeviceModal = ref(false);
 const selectedDeviceForEdit = ref<any | null>(null);
+
+// --- Modbus Config State ---
+const modbusConnections = ref<any[]>([]);
+const showModbusModal = ref(false);
+const selectedConnectionForEdit = ref<any | null>(null);
+const showRegisterModal = ref(false);
+const selectedDeviceForRegister = ref<any | null>(null);
+const modbusTestResult = ref<Record<number, { loading: boolean; message: string; ok: boolean }>>({});
 
 // --- Polling Interval ---
 let pollInterval: any = null;
@@ -143,7 +153,8 @@ async function loadAllData() {
       fetchDevices(),
       fetchRealtimeTelemetries(),
       fetchAlarms(),
-      fetchAnalyticsSummary()
+      fetchAnalyticsSummary(),
+      fetchModbusConnections()
     ]);
     
     // Set first device as default selected in detail view if none selected
@@ -369,6 +380,95 @@ function updateClock() {
   currentTime.value = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+// --- Modbus Connection Functions ---
+async function fetchModbusConnections() {
+  if (isDummyMode.value) {
+    modbusConnections.value = [];
+    return;
+  }
+  try {
+    const res = await fetch('/api/modbus/connections', { headers: getHeaders() });
+    const result = await res.json();
+    if (result.success) modbusConnections.value = result.data;
+  } catch { /* silently fail */ }
+}
+
+async function saveModbusConnection(payload: any) {
+  try {
+    let url = '/api/modbus/connections';
+    let method = 'POST';
+    if (selectedConnectionForEdit.value) {
+      url = `/api/modbus/connections/${selectedConnectionForEdit.value.id}`;
+      method = 'PUT';
+    }
+    const res = await fetch(url, { method, headers: getHeaders(), body: JSON.stringify(payload) });
+    const result = await res.json();
+    if (result.success) {
+      showModbusModal.value = false;
+      selectedConnectionForEdit.value = null;
+      await fetchModbusConnections();
+    } else {
+      alert(`Gagal menyimpan: ${result.message}`);
+    }
+  } catch (err) {
+    alert('Terjadi kesalahan koneksi');
+  }
+}
+
+async function deleteModbusConnection(connId: number) {
+  if (!confirm('Hapus koneksi ini? Device yang terhubung akan ter-disconnect dari koneksi ini.')) return;
+  try {
+    const res = await fetch(`/api/modbus/connections/${connId}`, { method: 'DELETE', headers: getHeaders() });
+    const result = await res.json();
+    if (result.success) {
+      await fetchModbusConnections();
+      await fetchDevices(); // Refresh devices since connectionId may have changed
+    } else {
+      alert(`Gagal menghapus: ${result.message}`);
+    }
+  } catch { alert('Terjadi kesalahan koneksi'); }
+}
+
+async function testModbusConnection(connId: number) {
+  modbusTestResult.value[connId] = { loading: true, message: '', ok: false };
+  try {
+    const res = await fetch(`/api/modbus/connections/${connId}/test`, { headers: getHeaders() });
+    const result = await res.json();
+    modbusTestResult.value[connId] = {
+      loading: false,
+      message: result.message,
+      ok: result.success,
+    };
+  } catch {
+    modbusTestResult.value[connId] = { loading: false, message: 'Koneksi ke backend gagal', ok: false };
+  }
+}
+
+async function saveDeviceModbusConfig(payload: any) {
+  if (!selectedDeviceForRegister.value) return;
+  try {
+    const res = await fetch(`/api/devices/${selectedDeviceForRegister.value.id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    const result = await res.json();
+    if (result.success) {
+      showRegisterModal.value = false;
+      selectedDeviceForRegister.value = null;
+      await fetchDevices();
+    } else {
+      alert(`Gagal menyimpan: ${result.message}`);
+    }
+  } catch { alert('Terjadi kesalahan koneksi'); }
+}
+
+function getConnectionName(connectionId: number | null): string {
+  if (!connectionId) return '—';
+  const conn = modbusConnections.value.find((c: any) => c.id === connectionId);
+  return conn ? conn.portName : '—';
+}
+
 // --- Polling Lifecycle ---
 function startPolling() {
   stopPolling();
@@ -495,6 +595,15 @@ onUnmounted(() => {
           :class="{ active: activePage === 'devices' }"
         >
           <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg></span> Device Manager
+        </button>
+
+        <button
+          v-if="userRole === 'admin'"
+          @click="activePage = 'modbus-config'; fetchModbusConnections()"
+          class="nav-btn"
+          :class="{ active: activePage === 'modbus-config' }"
+        >
+          <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg></span> Modbus Config
         </button>
       </nav>
       
@@ -881,7 +990,7 @@ onUnmounted(() => {
           <div class="glass-panel table-panel full-width">
             <div class="panel-header">
               <div class="title-meta">
-                <h3>💻 Manajemen Objek Sensor (Modbus RTU)</h3>
+                <h3>Manajemen Objek Sensor (Modbus RTU)</h3>
                 <p class="subtitle">Daftarkan dan konfigurasikan setpoint alarm pada perangkat RS485</p>
               </div>
               <button 
@@ -934,6 +1043,118 @@ onUnmounted(() => {
           </div>
         </section>
 
+        <!-- PAGE E: MODBUS CONFIG -->
+        <section v-else-if="activePage === 'modbus-config'" class="page-sec flex-col modbus-config-page">
+          
+          <!-- Section A: Serial Connections -->
+          <div class="glass-panel modbus-section">
+            <div class="panel-header">
+              <div class="title-meta">
+                <h3>Koneksi Serial RS485</h3>
+                <p class="subtitle">Kelola COM port yang digunakan untuk komunikasi Modbus RTU</p>
+              </div>
+              <button @click="selectedConnectionForEdit = null; showModbusModal = true" class="btn-add-device">
+                + Tambah Koneksi Serial
+              </button>
+            </div>
+
+            <!-- Empty state -->
+            <div v-if="modbusConnections.length === 0" class="modbus-empty">
+              <div class="modbus-empty-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+              </div>
+              <p>Belum ada koneksi serial yang dikonfigurasi</p>
+              <span>Klik "Tambah Koneksi Serial" untuk memulai</span>
+            </div>
+
+            <!-- Connection Cards -->
+            <div v-else class="conn-card-list">
+              <div v-for="conn in modbusConnections" :key="conn.id" class="conn-card glass-panel">
+                <div class="conn-card-left">
+                  <div class="conn-port-badge" :class="{ 'conn-active': conn.isActive }">
+                    <span class="conn-status-dot" :class="{ 'active': conn.isActive }"></span>
+                    <span class="text-mono">{{ conn.portName }}</span>
+                  </div>
+                  <div class="conn-meta">
+                    <span class="text-mono conn-settings">{{ conn.baudRate }} baud &bull; {{ conn.dataBits }}{{ conn.parity.charAt(0).toUpperCase() }}{{ conn.stopBits }}</span>
+                    <span class="conn-poll">Poll: {{ conn.pollInterval }}ms &bull; Timeout: {{ conn.timeout }}ms</span>
+                  </div>
+                </div>
+                <div class="conn-card-right">
+                  <span v-if="conn.isActive" class="badge-active">AKTIF</span>
+                  <span v-else class="badge-inactive">NON-AKTIF</span>
+
+                  <!-- Test result -->
+                  <div v-if="modbusTestResult[conn.id]" class="test-result" :class="{ 'ok': modbusTestResult[conn.id].ok, 'fail': !modbusTestResult[conn.id].ok && !modbusTestResult[conn.id].loading }">
+                    <span v-if="modbusTestResult[conn.id].loading">Menguji...</span>
+                    <span v-else>{{ modbusTestResult[conn.id].ok ? '✓' : '✗' }} {{ modbusTestResult[conn.id].message }}</span>
+                  </div>
+
+                  <div class="action-btns">
+                    <button @click="testModbusConnection(conn.id)" class="test-btn" :disabled="modbusTestResult[conn.id]?.loading">TEST</button>
+                    <button @click="selectedConnectionForEdit = conn; showModbusModal = true" class="edit-btn">EDIT</button>
+                    <button @click="deleteModbusConnection(conn.id)" class="del-btn">HAPUS</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section B: Register Address Mapping -->
+          <div class="glass-panel modbus-section">
+            <div class="panel-header">
+              <div class="title-meta">
+                <h3>Mapping Register Address per Device</h3>
+                <p class="subtitle">Set alamat holding register Modbus untuk setiap parameter sensor</p>
+              </div>
+            </div>
+
+            <div class="table-wrapper">
+              <table class="scada-table">
+                <thead>
+                  <tr>
+                    <th>Slave ID</th>
+                    <th>Nama Sensor</th>
+                    <th>Koneksi</th>
+                    <th>Reg. Temp</th>
+                    <th>Reg. Vel-Z</th>
+                    <th>Reg. Vel-X</th>
+                    <th>Reg. Acc-Z</th>
+                    <th>Reg. Acc-X</th>
+                    <th>Data Type</th>
+                    <th>Byte Order</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="devicesList.length === 0">
+                    <td colspan="11" class="empty-row">Belum ada perangkat terdaftar. Tambahkan device di Device Manager terlebih dahulu.</td>
+                  </tr>
+                  <tr v-for="d in devicesList" :key="d.id">
+                    <td class="text-mono text-gradient">#{{ d.slaveId }}</td>
+                    <td><strong>{{ d.namaSensor }}</strong></td>
+                    <td>
+                      <span v-if="d.connectionId" class="text-mono" style="color: var(--accent-primary);">{{ getConnectionName(d.connectionId) }}</span>
+                      <span v-else class="badge-unconfigured">belum dikonfigurasi</span>
+                    </td>
+                    <td class="text-mono">{{ d.regTemp !== null && d.regTemp !== undefined ? d.regTemp : '—' }}</td>
+                    <td class="text-mono">{{ d.regZVel !== null && d.regZVel !== undefined ? d.regZVel : '—' }}</td>
+                    <td class="text-mono">{{ d.regXVel !== null && d.regXVel !== undefined ? d.regXVel : '—' }}</td>
+                    <td class="text-mono">{{ d.regZAcc !== null && d.regZAcc !== undefined ? d.regZAcc : '—' }}</td>
+                    <td class="text-mono">{{ d.regXAcc !== null && d.regXAcc !== undefined ? d.regXAcc : '—' }}</td>
+                    <td class="text-mono">{{ d.regDataType || '—' }}</td>
+                    <td class="text-mono">{{ d.regByteOrder || '—' }}</td>
+                    <td>
+                      <button @click="selectedDeviceForRegister = d; showRegisterModal = true" class="edit-btn">KONFIGURASI</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </section>
+
       </main>
     </div>
   </div>
@@ -944,6 +1165,23 @@ onUnmounted(() => {
     :device="selectedDeviceForEdit"
     @close="showDeviceModal = false"
     @save="handleSaveDevice"
+  />
+
+  <!-- Modbus Connection Modal -->
+  <ModbusConfigModal
+    :show="showModbusModal"
+    :connection="selectedConnectionForEdit"
+    @close="showModbusModal = false; selectedConnectionForEdit = null"
+    @save="saveModbusConnection"
+  />
+
+  <!-- Modbus Register Address Modal -->
+  <ModbusRegisterModal
+    :show="showRegisterModal"
+    :device="selectedDeviceForRegister"
+    :connections="modbusConnections"
+    @close="showRegisterModal = false; selectedDeviceForRegister = null"
+    @save="saveDeviceModbusConfig"
   />
 </template>
 
@@ -1848,5 +2086,200 @@ onUnmounted(() => {
 
 .del-btn:hover {
   background: var(--status-critical-glow);
+}
+
+/* ========================
+   MODBUS CONFIG PAGE STYLES
+   ======================== */
+.modbus-config-page {
+  gap: 20px;
+}
+
+.modbus-section {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Empty state */
+.modbus-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px;
+  color: var(--text-secondary);
+}
+
+.modbus-empty-icon {
+  color: var(--text-muted);
+  opacity: 0.4;
+  margin-bottom: 8px;
+}
+
+.modbus-empty p { font-weight: 600; font-size: 0.95rem; }
+.modbus-empty span { font-size: 0.8rem; color: var(--text-muted); }
+
+/* Connection Cards */
+.conn-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.conn-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-radius: 12px;
+  gap: 16px;
+  transition: border-color 0.2s;
+}
+
+.conn-card.conn-active-card { border-color: rgba(0, 210, 255, 0.3); }
+
+.conn-card-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+}
+
+.conn-port-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  min-width: 100px;
+}
+
+.conn-port-badge.conn-active {
+  border-color: rgba(0, 210, 255, 0.35);
+  background: rgba(0, 210, 255, 0.06);
+}
+
+.conn-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.conn-status-dot.active {
+  background: var(--status-safe);
+  box-shadow: 0 0 8px var(--status-safe);
+  animation: pulse-soft 2s infinite;
+}
+
+.conn-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.conn-settings {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.conn-poll {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.conn-card-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.badge-active {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: var(--status-safe);
+}
+
+.badge-inactive {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: var(--text-muted);
+}
+
+.badge-unconfigured {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: var(--status-warning);
+  font-style: italic;
+}
+
+.test-result {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  max-width: 280px;
+  text-align: right;
+  line-height: 1.4;
+}
+
+.test-result.ok {
+  color: var(--status-safe);
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.test-result.fail {
+  color: var(--status-critical);
+  background: var(--status-critical-glow);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.test-btn {
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid rgba(0, 210, 255, 0.25);
+  background: rgba(0, 210, 255, 0.08);
+  color: var(--accent-primary);
+  transition: all 0.15s;
+}
+
+.test-btn:hover:not(:disabled) {
+  background: rgba(0, 210, 255, 0.15);
+  border-color: rgba(0, 210, 255, 0.5);
+}
+
+.test-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>
