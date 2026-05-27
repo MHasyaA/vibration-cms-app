@@ -79,18 +79,25 @@ export const DUMMY_ALARMS_HISTORY = [
   }
 ];
 
-export const generateDummyTrend = (deviceId: number, limit: number = 30) => {
+export const generateDummyTrend = (deviceId: number, start?: string, end?: string) => {
   const trend = [];
-  const now = Date.now();
+  const endTime = end ? new Date(end).getTime() : Date.now();
+  const startTime = start ? new Date(start).getTime() : endTime - (30 * 5000);
+  
+  // Limit points for dummy mode to prevent lagging
+  const points = 100;
+  const interval = Math.max(1000, Math.floor((endTime - startTime) / points));
+  
   const device = DUMMY_DEVICES.find(d => d.id === deviceId) || DUMMY_DEVICES[0];
 
   const tempBase = device.setpointTemp * 0.6;
   const velBase = device.setpointZVel * 0.5;
   const accBase = device.setpointZAcc * 0.4;
 
-  for (let i = limit; i >= 0; i--) {
+  for (let t = startTime; t <= endTime; t += interval) {
+    const i = (t - startTime) / interval;
     trend.push({
-      timestamp: new Date(now - i * 5000).toISOString(),
+      timestamp: new Date(t).toISOString(),
       temperature: tempBase + (Math.sin(i * 0.5) * 5) + (Math.random() * 2),
       zVelocity: velBase + (Math.cos(i * 0.3) * 2) + (Math.random() * 0.5),
       xVelocity: velBase + (Math.sin(i * 0.4) * 2) + (Math.random() * 0.5),

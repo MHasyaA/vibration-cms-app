@@ -106,7 +106,7 @@ const tempColor = computed(() => {
 
 <style scoped>
 .scada-svg-container {
-  padding: 24px;
+  padding: 12px 16px;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -143,13 +143,13 @@ const tempColor = computed(() => {
   justify-content: center;
   align-items: center;
   position: relative;
-  min-height: 250px;
+  min-height: 180px;
 }
 
 .motor-wrapper {
   position: relative;
   width: 100%;
-  max-width: 500px;
+  max-width: 400px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -203,9 +203,9 @@ const tempColor = computed(() => {
 .scada-telemetry {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+  gap: 12px;
   margin-top: auto;
-  padding-top: 16px;
+  padding-top: 12px;
   border-top: 1px solid var(--border-color);
 }
 .tel-item {
@@ -213,7 +213,7 @@ const tempColor = computed(() => {
   flex-direction: column;
   align-items: center;
   background: var(--bg-input);
-  padding: 12px;
+  padding: 8px;
   border-radius: 8px;
 }
 .tel-item .lbl {
