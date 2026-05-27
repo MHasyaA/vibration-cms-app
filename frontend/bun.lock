@@ -5,7 +5,9 @@
     "": {
       "name": "frontend",
       "dependencies": {
+        "apexcharts": "^5.13.0",
         "vue": "^3.5.34",
+        "vue3-apexcharts": "^1.11.1",
       },
       "devDependencies": {
         "@types/node": "^24.12.3",
@@ -106,6 +108,8 @@
 
     "alien-signals": ["alien-signals@3.2.1", "", {}, "sha512-I8FjmltrfnDFoZedi5CG8DghVYNhzb/Ijluz7tCSJH0xpd0484Kowhbb1XDYOxfJpU1p5wnM2X54dA+IfGyD1g=="],
 
+    "apexcharts": ["apexcharts@5.13.0", "", {}, "sha512-PJuXT6zdiCbv0IkX5cqkKFVIIh+9v3kqP9zsOHEGpIWi7DfTgzvfOKc8icw6G3/ulR3V1alDDUtOVH0zWCWGEQ=="],
+
     "csstype": ["csstype@3.2.3", "", {}, "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ=="],
 
     "detect-libc": ["detect-libc@2.1.2", "", {}, "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ=="],
@@ -175,5 +179,7 @@
     "vue": ["vue@3.5.35", "", { "dependencies": { "@vue/compiler-dom": "3.5.35", "@vue/compiler-sfc": "3.5.35", "@vue/runtime-dom": "3.5.35", "@vue/server-renderer": "3.5.35", "@vue/shared": "3.5.35" }, "peerDependencies": { "typescript": "*" }, "optionalPeers": ["typescript"] }, "sha512-cx89fnr+0kVGHiNFG6y6s0bdjypJRFNZn6x3WPstNdQR1bi1mbB7h4v5IBGTsPJU3nK1+0Iqj3Zf+hZWMieR4Q=="],
 
     "vue-tsc": ["vue-tsc@3.3.2", "", { "dependencies": { "@volar/typescript": "2.4.28", "@vue/language-core": "3.3.2" }, "peerDependencies": { "typescript": ">=5.0.0" }, "bin": { "vue-tsc": "bin/vue-tsc.js" } }, "sha512-n7nQoA3YWW/eiDR8jMiv/uJvlg0uLGs+YgUrsTrf9EZaYSt3tuvMZb5V8+7Mvh/EH5pnY/hoVdgfjH+XcK+wwA=="],
+
+    "vue3-apexcharts": ["vue3-apexcharts@1.11.1", "", { "peerDependencies": { "apexcharts": ">=5.10.0", "vue": ">=3.0.0" } }, "sha512-MbN3vg8bMG19wc0Lm1HkeQvODgLm56DgpIxtNUO0xpf/JCzYWVGE4jzXp2JISzy2s3Kul1yOxNQUYsLvKQ5L9g=="],
   }
 }

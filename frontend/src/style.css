@@ -1,1 +1,158 @@
-/* Emptied to prevent conflict with our custom styled dashboard in App.vue */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  /* Dark Theme variables (Ice Blue) */
+  --bg-space: #08111a;
+  --bg-panel: rgba(13, 25, 38, 0.65);
+  --bg-panel-solid: #0d1926;
+  --bg-input: #122133;
+  --bg-input-hover: #1a304a;
+  
+  --border-color: rgba(0, 210, 255, 0.15);
+  --border-glow: rgba(0, 210, 255, 0.2);
+  --border-glow-hover: rgba(58, 123, 213, 0.4);
+  
+  --text-primary: #e0f2fe;
+  --text-secondary: #93c5fd;
+  --text-muted: #60a5fa;
+  
+  --accent-primary: #00d2ff;
+  --accent-secondary: #3a7bd5;
+  --accent-cyan: #00ffff;
+  
+  --status-safe: #10b981;
+  --status-warning: #f59e0b;
+  --status-critical: #ef4444;
+  
+  --status-safe-glow: rgba(16, 185, 129, 0.15);
+  --status-warning-glow: rgba(245, 158, 11, 0.15);
+  --status-critical-glow: rgba(239, 68, 68, 0.25);
+  
+  --sidebar-width: 260px;
+  --header-height: 70px;
+  --shadow-premium: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+  --glass-blur: blur(12px);
+}
+
+:root.light-theme {
+  /* Light Theme variables (Ice Blue) */
+  --bg-space: #f0f8ff;
+  --bg-panel: rgba(255, 255, 255, 0.75);
+  --bg-panel-solid: #ffffff;
+  --bg-input: #e0f2fe;
+  --bg-input-hover: #bae6fd;
+  
+  --border-color: rgba(0, 85, 153, 0.1);
+  --border-glow: rgba(0, 136, 204, 0.15);
+  --border-glow-hover: rgba(0, 136, 204, 0.3);
+  
+  --text-primary: #0f172a;
+  --text-secondary: #1e3a8a;
+  --text-muted: #3b82f6;
+  
+  --accent-primary: #0088cc;
+  --accent-secondary: #005599;
+  --accent-cyan: #0284c7;
+  
+  --status-safe: #10b981;
+  --status-warning: #d97706;
+  --status-critical: #dc2626;
+  
+  --status-safe-glow: rgba(16, 185, 129, 0.1);
+  --status-warning-glow: rgba(217, 119, 6, 0.1);
+  --status-critical-glow: rgba(220, 38, 38, 0.12);
+  
+  --shadow-premium: 0 10px 30px -10px rgba(148, 163, 184, 0.2);
+}
+
+/* Global Reset & Layout Configuration */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.15s ease;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg-space);
+  color: var(--text-primary);
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow: hidden; /* Lock viewport to prevent overall scrolling in SCADA full screen mode */
+}
+
+#app {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+}
+
+/* Scrollbar Customization for clean SCADA look */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+/* Micro-animations */
+@keyframes shake-extreme {
+  10%, 90% { transform: translate3d(-1px, 1px, 0); }
+  20%, 80% { transform: translate3d(2px, -1px, 0); }
+  30%, 50%, 70% { transform: translate3d(-2px, 2px, 0); }
+  40%, 60% { transform: translate3d(2px, -2px, 0); }
+}
+
+@keyframes shake-mild {
+  10%, 90% { transform: translate3d(-0.5px, 0.5px, 0); }
+  20%, 80% { transform: translate3d(1px, -0.5px, 0); }
+  30%, 50%, 70% { transform: translate3d(-1px, 1px, 0); }
+  40%, 60% { transform: translate3d(1px, -1px, 0); }
+}
+
+@keyframes pulse-soft {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Helper Utilities */
+.text-gradient {
+  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.glass-panel {
+  background: var(--bg-panel);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: var(--shadow-premium);
+}
+
+.glass-panel:hover {
+  border-color: var(--border-glow-hover);
+}
+
+.text-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
