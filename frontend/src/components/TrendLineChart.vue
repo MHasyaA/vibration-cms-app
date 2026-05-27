@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import apexchart from 'vue3-apexcharts';
 
 const props = defineProps<{
@@ -19,61 +19,121 @@ const props = defineProps<{
   isDarkTheme: boolean;
 }>();
 
-const activeTab = ref<'velocity' | 'acceleration' | 'temperature'>('velocity');
+const emit = defineEmits<{
+  (e: 'range-change', payload: { start?: string; end?: string }): void;
+}>();
+
+type TabType = 'velZ' | 'velX' | 'accZ' | 'accX' | 'temp';
+const activeTab = ref<TabType>('velZ');
+
+const timeRange = ref<'last_hour' | 'last_day' | 'last_week' | 'last_month' | 'custom'>('last_hour');
+const customStart = ref('');
+const customEnd = ref('');
+
+function applyDateRange() {
+  let start: string | undefined = undefined;
+  let end: string | undefined = undefined;
+  
+  const now = new Date();
+  if (timeRange.value === 'last_hour') {
+    start = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+  } else if (timeRange.value === 'last_day') {
+    start = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  } else if (timeRange.value === 'last_week') {
+    start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  } else if (timeRange.value === 'last_month') {
+    start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  } else if (timeRange.value === 'custom') {
+    if (customStart.value) start = new Date(customStart.value).toISOString();
+    if (customEnd.value) end = new Date(customEnd.value).toISOString();
+  }
+  
+  emit('range-change', { start, end });
+}
+
+watch(timeRange, (val) => {
+  if (val !== 'custom') applyDateRange();
+});
 
 const sortedLogs = computed(() => {
-  // Sort logs by timestamp ascending for chart drawing
   return [...props.logs].sort(
     (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
   );
 });
 
+function exportToCSV() {
+  if (props.logs.length === 0) return;
+  
+  const headers = ['Timestamp', 'Core Temperature (°C)', 'Z-Axis Velocity (mm/s)', 'X-Axis Velocity (mm/s)', 'Z-Axis Acceleration (mm/s²)', 'X-Axis Acceleration (mm/s²)'];
+  
+  const rows = sortedLogs.value.map(log => {
+    return [
+      `"${new Date(log.timestamp).toLocaleString('id-ID')}"`,
+      log.temperature.toFixed(2),
+      log.zVelocity.toFixed(2),
+      log.xVelocity.toFixed(2),
+      log.zAcceleration.toFixed(2),
+      log.xAcceleration.toFixed(2)
+    ].join(',');
+  });
+  
+  const csvContent = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', `scada_trend_data.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 // Timestamps mapped to readable locale strings
 const categories = computed(() => {
   return sortedLogs.value.map((log) => {
     const d = new Date(log.timestamp);
-    return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return d.toLocaleString('id-ID', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   });
 });
 
-// Series definitions depending on active tab
-const series = computed(() => {
-  if (activeTab.value === 'velocity') {
-    return [
-      {
-        name: 'Z-Axis Velocity',
-        data: sortedLogs.value.map((l) => Number(l.zVelocity.toFixed(2))),
-      },
-      {
-        name: 'X-Axis Velocity',
-        data: sortedLogs.value.map((l) => Number(l.xVelocity.toFixed(2))),
-      },
-    ];
-  } else if (activeTab.value === 'acceleration') {
-    return [
-      {
-        name: 'Z-Axis Acceleration',
-        data: sortedLogs.value.map((l) => Number(l.zAcceleration.toFixed(2))),
-      },
-      {
-        name: 'X-Axis Acceleration',
-        data: sortedLogs.value.map((l) => Number(l.xAcceleration.toFixed(2))),
-      },
-    ];
-  } else {
-    return [
-      {
-        name: 'Core Temperature',
-        data: sortedLogs.value.map((l) => Number(l.temperature.toFixed(1))),
-      },
-    ];
-  }
+const seriesData = computed(() => {
+  return sortedLogs.value.map(l => {
+    switch(activeTab.value) {
+      case 'velZ': return Number(l.zVelocity.toFixed(2));
+      case 'velX': return Number(l.xVelocity.toFixed(2));
+      case 'accZ': return Number(l.zAcceleration.toFixed(2));
+      case 'accX': return Number(l.xAcceleration.toFixed(2));
+      case 'temp': return Number(l.temperature.toFixed(1));
+      default: return 0;
+    }
+  });
 });
 
-// Chart Y-Axis unit and label
+const stats = computed(() => {
+  const data = seriesData.value;
+  if (data.length === 0) return null;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const avg = data.reduce((a, b) => a + b, 0) / data.length;
+  return { min, max, avg: Number(avg.toFixed(2)) };
+});
+
+const series = computed(() => {
+  let name = '';
+  switch(activeTab.value) {
+    case 'velZ': name = 'Z-Axis Velocity'; break;
+    case 'velX': name = 'X-Axis Velocity'; break;
+    case 'accZ': name = 'Z-Axis Acceleration'; break;
+    case 'accX': name = 'X-Axis Acceleration'; break;
+    case 'temp': name = 'Core Temperature'; break;
+  }
+  return [{ name, data: seriesData.value }];
+});
+
 const yUnit = computed(() => {
-  if (activeTab.value === 'velocity') return 'mm/s';
-  if (activeTab.value === 'acceleration') return 'mm/s²';
+  if (activeTab.value.startsWith('vel')) return 'mm/s';
+  if (activeTab.value.startsWith('acc')) return 'mm/s²';
   return '°C';
 });
 
@@ -81,43 +141,76 @@ const yUnit = computed(() => {
 const yAnnotations = computed(() => {
   const annotations: any[] = [];
   
-  if (activeTab.value === 'velocity') {
-    const limitZ = props.setpointZVel || 7.1;
-    annotations.push({
-      y: limitZ,
+  let limitValue = 0;
+  let limitLabel = '';
+
+  switch(activeTab.value) {
+    case 'velZ': limitValue = props.setpointZVel || 7.1; limitLabel = 'Z-Vel Limit'; break;
+    case 'velX': limitValue = props.setpointXVel || 7.1; limitLabel = 'X-Vel Limit'; break;
+    case 'accZ': limitValue = props.setpointZAcc || 10.0; limitLabel = 'Z-Acc Limit'; break;
+    case 'accX': limitValue = props.setpointXAcc || 10.0; limitLabel = 'X-Acc Limit'; break;
+    case 'temp': limitValue = props.setpointTemp || 70.0; limitLabel = 'Temp Limit'; break;
+  }
+
+  // 1. Setpoint Annotation
+  annotations.push({
+    y: limitValue,
+    borderColor: '#ef4444',
+    borderWidth: 2,
+    strokeDashArray: 4,
+    label: {
       borderColor: '#ef4444',
+      style: { color: '#fff', background: '#ef4444', fontWeight: 600, fontFamily: 'Outfit, sans-serif' },
+      text: `${limitLabel}: ${limitValue}`,
+    },
+  });
+
+  // Include min/avg/max if stats exist
+  if (stats.value) {
+    const { min, max, avg } = stats.value;
+
+    // 2. Max Annotation (Orange)
+    annotations.push({
+      y: max,
+      borderColor: '#f97316', // Orange-500
       borderWidth: 2,
-      strokeDashArray: 4,
+      strokeDashArray: 2,
       label: {
-        borderColor: '#ef4444',
-        style: { color: '#fff', background: '#ef4444', fontWeight: 600 },
-        text: `Z-Vel Limit: ${limitZ} mm/s`,
+        borderColor: '#f97316',
+        position: 'left',
+        textAnchor: 'start',
+        style: { color: '#fff', background: '#f97316', fontWeight: 600, fontFamily: 'Outfit, sans-serif' },
+        text: `Max: ${max}`,
       },
     });
-  } else if (activeTab.value === 'acceleration') {
-    const limitZAcc = props.setpointZAcc || 10.0;
+
+    // 3. Avg Annotation (Blue)
     annotations.push({
-      y: limitZAcc,
-      borderColor: '#ef4444',
+      y: avg,
+      borderColor: '#0ea5e9', // Sky-500
       borderWidth: 2,
-      strokeDashArray: 4,
+      strokeDashArray: 2,
       label: {
-        borderColor: '#ef4444',
-        style: { color: '#fff', background: '#ef4444', fontWeight: 600 },
-        text: `Z-Acc Limit: ${limitZAcc} mm/s²`,
+        borderColor: '#0ea5e9',
+        position: 'left',
+        textAnchor: 'start',
+        style: { color: '#fff', background: '#0ea5e9', fontWeight: 600, fontFamily: 'Outfit, sans-serif' },
+        text: `Avg: ${avg}`,
       },
     });
-  } else {
-    const limitTemp = props.setpointTemp || 70;
+
+    // 4. Min Annotation (Green)
     annotations.push({
-      y: limitTemp,
-      borderColor: '#ef4444',
+      y: min,
+      borderColor: '#10b981', // Emerald-500
       borderWidth: 2,
-      strokeDashArray: 4,
+      strokeDashArray: 2,
       label: {
-        borderColor: '#ef4444',
-        style: { color: '#fff', background: '#ef4444', fontWeight: 600 },
-        text: `Temp Limit: ${limitTemp} °C`,
+        borderColor: '#10b981',
+        position: 'left',
+        textAnchor: 'start',
+        style: { color: '#fff', background: '#10b981', fontWeight: 600, fontFamily: 'Outfit, sans-serif' },
+        text: `Min: ${min}`,
       },
     });
   }
@@ -131,9 +224,7 @@ const chartOptions = computed(() => {
   const chartTheme = (isDark ? 'dark' : 'light') as 'dark' | 'light';
   const gridColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
   const labelColor = isDark ? '#94a3b8' : '#475569';
-  const accentColors = activeTab.value === 'temperature' 
-    ? ['#f59e0b'] // Orange/Yellow for Temperature
-    : ['#6366f1', '#06b6d4']; // Purple & Cyan for Z/X axis
+  const accentColors = ['#00d2ff'];
 
   return {
     chart: {
@@ -203,30 +294,36 @@ const chartOptions = computed(() => {
         </span>
         <h3>Grafik Tren Historis</h3>
       </div>
+      <!-- Date Range Controls -->
+      <div class="range-controls">
+        <select v-model="timeRange" class="range-select">
+          <option value="last_hour">Last Hour</option>
+          <option value="last_day">Last Day</option>
+          <option value="last_week">Last Week</option>
+          <option value="last_month">Last Month</option>
+          <option value="custom">Custom Range...</option>
+        </select>
+        
+        <div v-if="timeRange === 'custom'" class="custom-range-inputs">
+          <input type="datetime-local" v-model="customStart" class="range-date" />
+          <span style="color: var(--text-secondary)">-</span>
+          <input type="datetime-local" v-model="customEnd" class="range-date" />
+          <button @click="applyDateRange" class="btn-apply">Apply</button>
+        </div>
+        
+        <button @click="exportToCSV" class="btn-export" title="Export Data to CSV" :disabled="logs.length === 0">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          CSV
+        </button>
+      </div>
       
       <!-- Parameter Tabs -->
       <div class="tabs-container">
-        <button 
-          @click="activeTab = 'velocity'" 
-          class="tab-btn" 
-          :class="{ active: activeTab === 'velocity' }"
-        >
-          Velocity (Getaran)
-        </button>
-        <button 
-          @click="activeTab = 'acceleration'" 
-          class="tab-btn" 
-          :class="{ active: activeTab === 'acceleration' }"
-        >
-          Acceleration (Gaya)
-        </button>
-        <button 
-          @click="activeTab = 'temperature'" 
-          class="tab-btn" 
-          :class="{ active: activeTab === 'temperature' }"
-        >
-          Temperature (Suhu)
-        </button>
+        <button @click="activeTab = 'velZ'" class="tab-btn" :class="{ active: activeTab === 'velZ' }">Vel Z</button>
+        <button @click="activeTab = 'velX'" class="tab-btn" :class="{ active: activeTab === 'velX' }">Vel X</button>
+        <button @click="activeTab = 'accZ'" class="tab-btn" :class="{ active: activeTab === 'accZ' }">Acc Z</button>
+        <button @click="activeTab = 'accX'" class="tab-btn" :class="{ active: activeTab === 'accX' }">Acc X</button>
+        <button @click="activeTab = 'temp'" class="tab-btn" :class="{ active: activeTab === 'temp' }">Temp</button>
       </div>
     </div>
     
@@ -338,5 +435,84 @@ h3 {
 
 .empty-chart .icon {
   font-size: 2rem;
+}
+
+.range-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.range-select {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.custom-range-inputs {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.range-date {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.btn-apply {
+  background: var(--accent-cyan);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-apply:hover {
+  filter: brightness(1.1);
+}
+
+.btn-export {
+  background: var(--bg-panel-solid);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.btn-export:hover:not(:disabled) {
+  background: var(--bg-input);
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+}
+
+.btn-export:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

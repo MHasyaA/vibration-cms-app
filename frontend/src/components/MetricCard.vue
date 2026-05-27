@@ -73,7 +73,7 @@ const displaySetpoint = computed(() => {
 
 <style scoped>
 .metric-card {
-  padding: 20px;
+  padding: 12px 16px;
   position: relative;
   overflow: hidden;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -83,7 +83,7 @@ const displaySetpoint = computed(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .title-group {
@@ -97,7 +97,7 @@ const displaySetpoint = computed(() => {
 }
 
 h4 {
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -115,17 +115,17 @@ h4 {
   display: flex;
   align-items: baseline;
   gap: 6px;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .value {
-  font-size: 2.2rem;
+  font-size: 1.8rem;
   font-weight: 800;
   line-height: 1;
 }
 
 .unit {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 600;
   color: var(--text-secondary);
 }

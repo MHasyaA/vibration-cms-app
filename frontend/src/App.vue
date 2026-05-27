@@ -39,6 +39,10 @@ const totalDevicesCount = ref(0);
 const activeAlarmsCount = ref(0);
 const deviceStatsList = ref<any[]>([]);
 
+// Trend Filter State
+const trendStart = ref<string | undefined>(undefined);
+const trendEnd = ref<string | undefined>(undefined);
+
 // --- Modals State ---
 const showDeviceModal = ref(false);
 const selectedDeviceForEdit = ref<any | null>(null);
@@ -213,13 +217,26 @@ async function fetchAnalyticsSummary() {
 
 async function fetchHistoricalTrend(deviceId: number) {
   if (isDummyMode.value) {
-    historicalLogs.value = generateDummyTrend(deviceId);
+    historicalLogs.value = generateDummyTrend(deviceId, trendStart.value, trendEnd.value);
     return;
   }
-  const res = await fetch(`/api/data/trend?deviceId=${deviceId}`, { headers: getHeaders() });
+  
+  let url = `/api/data/trend?deviceId=${deviceId}`;
+  if (trendStart.value) url += `&start=${trendStart.value}`;
+  if (trendEnd.value) url += `&end=${trendEnd.value}`;
+  
+  const res = await fetch(url, { headers: getHeaders() });
   const result = await res.json();
   if (result.success) {
     historicalLogs.value = result.data;
+  }
+}
+
+function handleRangeChange(payload: { start?: string; end?: string }) {
+  trendStart.value = payload.start;
+  trendEnd.value = payload.end;
+  if (selectedDeviceId.value !== null) {
+    fetchHistoricalTrend(selectedDeviceId.value);
   }
 }
 
@@ -769,6 +786,7 @@ onUnmounted(() => {
                 :setpointZAcc="selectedDeviceDetails.setpointZAcc"
                 :setpointXAcc="selectedDeviceDetails.setpointXAcc"
                 :isDarkTheme="theme === 'dark'"
+                @range-change="handleRangeChange"
               />
             </div>
           </div>
@@ -1562,26 +1580,27 @@ onUnmounted(() => {
 .detail-stack-layout {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
   width: 100%;
 }
 
 .detail-top-section {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  gap: 16px;
 }
 
 @media (max-width: 1024px) {
   .detail-top-section {
     grid-template-columns: 1fr;
+    max-height: unset;
   }
 }
 
 .detail-metrics-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+  gap: 12px;
 }
 
 .svg-wrapper {
@@ -1591,7 +1610,8 @@ onUnmounted(() => {
 
 .detail-bottom-section {
   width: 100%;
-  min-height: 350px;
+  min-height: 40vh;
+  flex: 1;
 }
 
 /* COMPARISON GRID CARDS */
