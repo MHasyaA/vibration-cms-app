@@ -55,12 +55,16 @@ export class AnalyticsService {
       alarmCountsResult.rows.map((row: any) => [row.deviceId, row.activeAlarmCount])
     );
 
-    // Merge active alarm counts into the metrics summary
+    // Merge active alarm counts into the metrics summary and map to system health status
     const deviceStats = metricsResult.rows.map((row: any) => {
       const activeAlarmCount = alarmCountsMap.get(row.deviceId) || 0;
+      let status = "safe";
+      if (activeAlarmCount > 0) {
+        status = "critical";
+      }
       return {
         ...row,
-        activeAlarmCount,
+        status,
       };
     });
 

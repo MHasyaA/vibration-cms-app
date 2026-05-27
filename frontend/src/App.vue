@@ -798,7 +798,7 @@ onUnmounted(() => {
             <!-- Active Alarms Card -->
             <div class="glass-panel table-panel">
               <div class="panel-header">
-                <h3>🚨 Alarm Aktif (Butuh Konfirmasi)</h3>
+                <h3>Alarm Aktif (Butuh Konfirmasi)</h3>
                 <span class="alarm-badge critical" v-if="activeAlarms.length > 0">
                   {{ activeAlarms.length }} KRITIS
                 </span>
@@ -840,7 +840,7 @@ onUnmounted(() => {
             <!-- Historical Alarms (Acknowledged) -->
             <div class="glass-panel table-panel">
               <div class="panel-header">
-                <h3>📜 Riwayat Alarm Terdahulu (Acknowledged)</h3>
+                <h3>Riwayat Alarm Terdahulu (Acknowledged)</h3>
               </div>
               
               <div class="table-wrapper">
