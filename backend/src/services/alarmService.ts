@@ -4,17 +4,27 @@ import { eq, and, desc } from "drizzle-orm";
 
 export class AlarmService {
   async getAllAlarms(status?: "active" | "acknowledged") {
+    const baseQuery = db
+      .select({
+        id: alarms.id,
+        deviceId: alarms.deviceId,
+        parameter: alarms.parameter,
+        value: alarms.value,
+        threshold: alarms.threshold,
+        status: alarms.status,
+        timestamp: alarms.timestamp,
+        deviceName: devices.namaSensor,
+      })
+      .from(alarms)
+      .leftJoin(devices, eq(alarms.deviceId, devices.id));
+
     if (status) {
-      return await db
-        .select()
-        .from(alarms)
+      return await baseQuery
         .where(eq(alarms.status, status))
         .orderBy(desc(alarms.timestamp));
     }
-    return await db
-      .select()
-      .from(alarms)
-      .orderBy(desc(alarms.timestamp));
+
+    return await baseQuery.orderBy(desc(alarms.timestamp));
   }
 
   async acknowledgeAlarm(id: number) {
