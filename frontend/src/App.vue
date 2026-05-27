@@ -1,897 +1,1832 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import MetricCard from './components/MetricCard.vue';
+import ScadaMotorSvg from './components/ScadaMotorSvg.vue';
+import TrendLineChart from './components/TrendLineChart.vue';
+import DeviceModal from './components/DeviceModal.vue';
+import { 
+  DUMMY_DEVICES, 
+  generateDummyTelemetries, 
+  DUMMY_ALARMS_ACTIVE, 
+  DUMMY_ALARMS_HISTORY, 
+  DUMMY_ANALYTICS_SUMMARY, 
+  generateDummyTrend 
+} from './utils/dummyData';
 
-interface VibrationLog {
-  id: number;
-  sensorName: string;
-  vibrationValue: number;
-  timestamp: string;
+// --- State Router ---
+const activePage = ref<'login' | 'overview' | 'detail' | 'alarms' | 'devices'>('login');
+const theme = ref<'dark' | 'light'>('dark');
+const isDummyMode = ref(false);
+
+// --- Auth State ---
+const username = ref(localStorage.getItem('scada_username') || '');
+const password = ref(localStorage.getItem('scada_password') || '');
+const userRole = ref(localStorage.getItem('scada_role') || '');
+const isLoggedIn = ref(!!localStorage.getItem('scada_logged_in'));
+const loginError = ref<string | null>(null);
+const loginLoading = ref(false);
+
+// --- SCADA Telemetry & Config State ---
+const devicesList = ref<any[]>([]);
+const realtimeData = ref<any[]>([]);
+const activeAlarms = ref<any[]>([]);
+const alarmHistory = ref<any[]>([]);
+const selectedDeviceId = ref<number | null>(null);
+const historicalLogs = ref<any[]>([]);
+
+// Analytics Summary Data
+const totalDevicesCount = ref(0);
+const activeAlarmsCount = ref(0);
+const deviceStatsList = ref<any[]>([]);
+
+// --- Modals State ---
+const showDeviceModal = ref(false);
+const selectedDeviceForEdit = ref<any | null>(null);
+
+// --- Polling Interval ---
+let pollInterval: any = null;
+
+// --- Helper: Basic Auth Headers ---
+function getHeaders() {
+  const token = btoa(`${username.value}:${password.value}`);
+  return {
+    'Authorization': `Basic ${token}`,
+    'Content-Type': 'application/json'
+  };
 }
 
-const logs = ref<VibrationLog[]>([]);
-const sensorName = ref('Sensor-Alpha');
-const vibrationValue = ref(1.8);
-const loading = ref(false);
-const submitLoading = ref(false);
-const error = ref<string | null>(null);
-
-// Thresholds for vibration severity (mm/s RMS)
-const THRESHOLD_WARNING = 3.5;
-const THRESHOLD_CRITICAL = 7.1;
-
-// Fetch vibration logs from the backend via Nginx reverse proxy
-async function fetchLogs() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const response = await fetch('/api/vibration?limit=20');
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const result = await response.json();
-    if (result.success) {
-      logs.value = result.data;
-    } else {
-      throw new Error(result.message || 'Failed to fetch logs');
-    }
-  } catch (err: any) {
-    error.value = err.message || 'Gagal terhubung ke API backend.';
-  } finally {
-    loading.value = false;
+// --- Watchers ---
+watch(theme, (newTheme) => {
+  if (newTheme === 'light') {
+    document.documentElement.classList.add('light-theme');
+  } else {
+    document.documentElement.classList.remove('light-theme');
   }
-}
+}, { immediate: true });
 
-// Submit new simulated vibration reading
-async function submitData() {
-  if (!sensorName.value || vibrationValue.value === null) return;
-  submitLoading.value = true;
-  error.value = null;
+watch(isDummyMode, async () => {
+  await loadAllData();
+});
+
+// --- Functions: Auth ---
+async function handleLogin() {
+  if (!username.value || !password.value) {
+    loginError.value = 'Silakan isi username dan password';
+    return;
+  }
+  
+  loginLoading.value = true;
+  loginError.value = null;
+  
   try {
-    const response = await fetch('/api/vibration', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        sensorName: sensorName.value,
-        vibrationValue: Number(vibrationValue.value),
-      }),
+    // Attempt authentication by fetching devices list (requires auth)
+    const token = btoa(`${username.value}:${password.value}`);
+    const res = await fetch('/api/devices', {
+      headers: { 'Authorization': `Basic ${token}` }
     });
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    
+    if (!res.ok) {
+      if (res.status === 401) {
+        throw new Error('Kredensial salah. Gunakan admin/adminpassword atau user/userpassword');
+      }
+      throw new Error(`Koneksi Backend Gagal (${res.status})`);
     }
-    const result = await response.json();
+    
+    const result = await res.json();
     if (result.success) {
-      // Refresh list immediately
-      await fetchLogs();
-      // Generate slightly randomized value for next simulation
-      vibrationValue.value = Number((Math.random() * 8.5).toFixed(2));
+      // Determine role from credentials (simple client-side heuristic for simulation, backed by real RBAC at backend)
+      const role = username.value === 'admin' ? 'admin' : 'user';
+      
+      localStorage.setItem('scada_username', username.value);
+      localStorage.setItem('scada_password', password.value);
+      localStorage.setItem('scada_role', role);
+      localStorage.setItem('scada_logged_in', 'true');
+      
+      userRole.value = role;
+      isLoggedIn.value = true;
+      loginError.value = null;
+      activePage.value = 'overview';
+      
+      // Load initial application data
+      await loadAllData();
+      startPolling();
     } else {
-      throw new Error(result.message || 'Failed to record data');
+      throw new Error(result.message || 'Gagal login.');
     }
   } catch (err: any) {
-    error.value = err.message || 'Gagal mengirim data ke backend.';
+    loginError.value = err.message || 'Terjadi kesalahan sistem.';
   } finally {
-    submitLoading.value = false;
+    loginLoading.value = false;
   }
 }
 
-// Computed stats
-const latestReading = computed(() => logs.value[0] || null);
+function handleLogout() {
+  localStorage.clear();
+  username.value = '';
+  password.value = '';
+  userRole.value = '';
+  isLoggedIn.value = false;
+  activePage.value = 'login';
+  stopPolling();
+}
 
-const statusClass = computed(() => {
-  if (!latestReading.value) return 'status-unknown';
-  const val = latestReading.value.vibrationValue;
-  if (val >= THRESHOLD_CRITICAL) return 'status-critical';
-  if (val >= THRESHOLD_WARNING) return 'status-warning';
-  return 'status-safe';
+// --- Functions: API Integrations ---
+async function loadAllData() {
+  if (!isLoggedIn.value) return;
+  
+  try {
+    await Promise.all([
+      fetchDevices(),
+      fetchRealtimeTelemetries(),
+      fetchAlarms(),
+      fetchAnalyticsSummary()
+    ]);
+    
+    // Set first device as default selected in detail view if none selected
+    if (selectedDeviceId.value === null && devicesList.value.length > 0) {
+      selectedDeviceId.value = devicesList.value[0].id;
+      await fetchHistoricalTrend(selectedDeviceId.value!);
+    }
+  } catch (err) {
+    console.error('Failed to load application data:', err);
+  }
+}
+
+async function fetchDevices() {
+  if (isDummyMode.value) {
+    devicesList.value = DUMMY_DEVICES;
+    return;
+  }
+  const res = await fetch('/api/devices', { headers: getHeaders() });
+  if (res.status === 401) handleLogout();
+  const result = await res.json();
+  if (result.success) {
+    devicesList.value = result.data;
+  }
+}
+
+async function fetchRealtimeTelemetries() {
+  if (isDummyMode.value) {
+    realtimeData.value = generateDummyTelemetries();
+    return;
+  }
+  const res = await fetch('/api/data/realtime', { headers: getHeaders() });
+  const result = await res.json();
+  if (result.success) {
+    realtimeData.value = result.data;
+  }
+}
+
+async function fetchAlarms() {
+  if (isDummyMode.value) {
+    activeAlarms.value = DUMMY_ALARMS_ACTIVE;
+    alarmHistory.value = DUMMY_ALARMS_HISTORY;
+    return;
+  }
+  const [activeRes, historyRes] = await Promise.all([
+    fetch('/api/alarms?status=active', { headers: getHeaders() }),
+    fetch('/api/alarms?status=acknowledged', { headers: getHeaders() })
+  ]);
+  
+  const activeResult = await activeRes.json();
+  const historyResult = await historyRes.json();
+  
+  if (activeResult.success) activeAlarms.value = activeResult.data;
+  if (historyResult.success) alarmHistory.value = historyResult.data;
+}
+
+async function fetchAnalyticsSummary() {
+  if (isDummyMode.value) {
+    totalDevicesCount.value = DUMMY_ANALYTICS_SUMMARY.totalDevices;
+    activeAlarmsCount.value = DUMMY_ANALYTICS_SUMMARY.totalActiveAlarms;
+    deviceStatsList.value = DUMMY_ANALYTICS_SUMMARY.deviceStats;
+    return;
+  }
+  const res = await fetch('/api/analytics/summary', { headers: getHeaders() });
+  const result = await res.json();
+  if (result.success) {
+    totalDevicesCount.value = result.data.totalDevices;
+    activeAlarmsCount.value = result.data.totalActiveAlarms;
+    deviceStatsList.value = result.data.deviceStats;
+  }
+}
+
+async function fetchHistoricalTrend(deviceId: number) {
+  if (isDummyMode.value) {
+    historicalLogs.value = generateDummyTrend(deviceId);
+    return;
+  }
+  const res = await fetch(`/api/data/trend?deviceId=${deviceId}`, { headers: getHeaders() });
+  const result = await res.json();
+  if (result.success) {
+    historicalLogs.value = result.data;
+  }
+}
+
+// --- Alarm Actions ---
+async function acknowledgeAlarm(alarmId: number) {
+  try {
+    const res = await fetch(`/api/alarms/${alarmId}/acknowledge`, {
+      method: 'PUT',
+      headers: getHeaders()
+    });
+    const result = await res.json();
+    if (result.success) {
+      await loadAllData();
+      if (selectedDeviceId.value !== null) {
+        await fetchHistoricalTrend(selectedDeviceId.value);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to acknowledge alarm:', err);
+  }
+}
+
+// --- CRUD Device Actions ---
+async function handleSaveDevice(payload: any) {
+  try {
+    let url = '/api/devices';
+    let method = 'POST';
+    
+    if (selectedDeviceForEdit.value) {
+      url = `/api/devices/${selectedDeviceForEdit.value.id}`;
+      method = 'PUT';
+    }
+    
+    const res = await fetch(url, {
+      method,
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    
+    const result = await res.json();
+    if (result.success) {
+      showDeviceModal.value = false;
+      selectedDeviceForEdit.value = null;
+      await loadAllData();
+    } else {
+      alert(`Gagal menyimpan perangkat: ${result.message}`);
+    }
+  } catch (err) {
+    console.error('Error saving device:', err);
+    alert('Terjadi kesalahan koneksi saat menyimpan perangkat');
+  }
+}
+
+async function handleDeleteDevice(deviceId: number) {
+  if (!confirm('Apakah Anda yakin ingin menghapus perangkat sensor ini? Semua log data historis dan alarm terkait juga akan terhapus.')) return;
+  
+  try {
+    const res = await fetch(`/api/devices/${deviceId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    const result = await res.json();
+    if (result.success) {
+      if (selectedDeviceId.value === deviceId) {
+        selectedDeviceId.value = null;
+      }
+      await loadAllData();
+    } else {
+      alert(`Gagal menghapus: ${result.message}`);
+    }
+  } catch (err) {
+    console.error('Error deleting device:', err);
+  }
+}
+
+function openAddDeviceModal() {
+  selectedDeviceForEdit.value = null;
+  showDeviceModal.value = true;
+}
+
+function openEditDeviceModal(device: any) {
+  selectedDeviceForEdit.value = device;
+  showDeviceModal.value = true;
+}
+
+// --- Dynamic Telemetry Helpers ---
+const selectedDeviceDetails = computed(() => {
+  if (selectedDeviceId.value === null) return null;
+  return devicesList.value.find(d => d.id === selectedDeviceId.value) || null;
 });
 
-const statusText = computed(() => {
-  if (!latestReading.value) return 'No Data';
-  const val = latestReading.value.vibrationValue;
-  if (val >= THRESHOLD_CRITICAL) return 'CRITICAL';
-  if (val >= THRESHOLD_WARNING) return 'WARNING';
-  return 'SAFE';
+const selectedDeviceTelemetry = computed(() => {
+  if (selectedDeviceId.value === null) return null;
+  return realtimeData.value.find(d => d.deviceId === selectedDeviceId.value) || null;
 });
 
-const maxVibration = computed(() => {
-  if (logs.value.length === 0) return 0;
-  return Math.max(...logs.value.map(l => l.vibrationValue));
-});
+function getDeviceTelemetry(deviceId: number) {
+  return realtimeData.value.find(d => d.deviceId === deviceId) || null;
+}
 
-// Auto refresh every 3 seconds
-let refreshInterval: any;
-onMounted(() => {
-  fetchLogs();
-  refreshInterval = setInterval(fetchLogs, 3000);
+function getDeviceStatus(deviceId: number) {
+  const tel = getDeviceTelemetry(deviceId);
+  const dev = devicesList.value.find(d => d.id === deviceId);
+  
+  if (!tel || !dev) return 'unknown';
+  
+  const tempLimit = dev.setpointTemp || 70;
+  const zVelLimit = dev.setpointZVel || 7.1;
+  const xVelLimit = dev.setpointXVel || 7.1;
+  
+  const t = tel.temperature || 0;
+  const zv = tel.zVelocity || 0;
+  const xv = tel.xVelocity || 0;
+  
+  if (t >= tempLimit || zv >= zVelLimit || xv >= xVelLimit) return 'critical';
+  if (t >= tempLimit * 0.8 || zv >= zVelLimit * 0.7 || xv >= xVelLimit * 0.7) return 'warning';
+  return 'safe';
+}
+
+function formatDate(isoString: string) {
+  if (!isoString) return '--/--/----';
+  const d = new Date(isoString);
+  return d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+}
+
+// --- Live Clock ---
+const currentTime = ref('');
+function updateClock() {
+  const now = new Date();
+  currentTime.value = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+// --- Polling Lifecycle ---
+function startPolling() {
+  stopPolling();
+  updateClock();
+  pollInterval = setInterval(async () => {
+    updateClock();
+    await fetchRealtimeTelemetries();
+    await fetchAlarms();
+    await fetchAnalyticsSummary();
+    if (selectedDeviceId.value !== null && activePage.value === 'detail') {
+      await fetchHistoricalTrend(selectedDeviceId.value);
+    }
+  }, 3000);
+}
+
+function stopPolling() {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
+}
+
+// Handle Detail Sensor click from Sidebar/Overview
+async function selectDevice(deviceId: number) {
+  selectedDeviceId.value = deviceId;
+  activePage.value = 'detail';
+  await fetchHistoricalTrend(deviceId);
+}
+
+onMounted(async () => {
+  updateClock();
+  setInterval(updateClock, 1000);
+  
+  if (isLoggedIn.value) {
+    activePage.value = 'overview';
+    await loadAllData();
+    startPolling();
+  }
 });
 
 onUnmounted(() => {
-  if (refreshInterval) clearInterval(refreshInterval);
+  stopPolling();
 });
-
-function formatTime(isoString: string) {
-  const date = new Date(isoString);
-  return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
-function getSeverityBadgeClass(val: number) {
-  if (val >= THRESHOLD_CRITICAL) return 'badge-critical';
-  if (val >= THRESHOLD_WARNING) return 'badge-warning';
-  return 'badge-safe';
-}
 </script>
 
 <template>
-  <div class="cms-container">
-    <!-- Navbar / Header -->
-    <header class="cms-header">
+  <!-- 1. LOGIN SCREEN -->
+  <div v-if="activePage === 'login'" class="login-viewport">
+    <div class="login-box glass-panel">
       <div class="logo-area">
-        <div class="pulse-icon"></div>
-        <h1>VIBRA-SENSE <span class="accent-text">// CMS</span></h1>
+        <div class="scada-dot pulsing"></div>
+        <h2>VIBRA-SENSE <span class="accent-text">// SCADA CMS</span></h2>
       </div>
-      <div class="status-indicator">
-        <span class="live-dot"></span>
-        <span class="live-text">MONITORING AKTIF (3s Auto-Refresh)</span>
-        <button @click="fetchLogs" class="btn-refresh" :disabled="loading">
-          <span :class="{ 'spinning': loading }">🔄</span> Refresh
+      <p class="login-sub">Condition Monitoring System - Industri 4.0</p>
+      
+      <div v-if="loginError" class="login-error">
+        ⚠️ {{ loginError }}
+      </div>
+      
+      <form @submit.prevent="handleLogin" class="login-form">
+        <div class="input-group">
+          <label>Username</label>
+          <input type="text" v-model="username" placeholder="Masukkan username (cth: admin)" required />
+        </div>
+        <div class="input-group">
+          <label>Password</label>
+          <input type="password" v-model="password" placeholder="Masukkan password (cth: adminpassword)" required />
+        </div>
+        <button type="submit" class="login-btn" :disabled="loginLoading">
+          <span v-if="loginLoading">Menghubungkan...</span>
+          <span v-else>LOG IN TO SYSTEM</span>
         </button>
+      </form>
+      
+      <div class="login-hint">
+        <p><strong>Tips Pengujian:</strong></p>
+        <p>Admin: <code>admin</code> / <code>adminpassword</code></p>
+        <p>User: <code>user</code> / <code>userpassword</code></p>
       </div>
-    </header>
+    </div>
+  </div>
 
-    <!-- Main Content Layout -->
-    <main class="cms-main">
-      <!-- Error Banner -->
-      <div v-if="error" class="error-banner">
-        <span class="error-icon">⚠️</span>
-        <p>{{ error }}</p>
+  <!-- 2. SCADA MAIN VIEWPORT -->
+  <div v-else class="scada-viewport">
+    
+    <!-- LEFT SIDEBAR -->
+    <aside class="scada-sidebar">
+      <div class="brand">
+        <div class="pulse-icon animate-pulse"></div>
+        <h3>VIBRA-SENSE</h3>
       </div>
-
-      <!-- Quick Metrics Cards -->
-      <section class="metrics-grid">
-        <!-- Card 1: Status Terbaru -->
-        <div class="metric-card glow-card" :class="statusClass">
-          <h3>Vibrasi Terkini</h3>
-          <div class="value-display">
-            <span class="number">{{ latestReading ? latestReading.vibrationValue.toFixed(2) : '--' }}</span>
-            <span class="unit">mm/s</span>
-          </div>
-          <div class="status-badge-container">
-            <span class="status-label">Status:</span>
-            <span class="status-badge">{{ statusText }}</span>
-          </div>
-          <div class="meta-info" v-if="latestReading">
-            Device: <strong>{{ latestReading.sensorName }}</strong> @ {{ formatTime(latestReading.timestamp) }}
+      
+      <nav class="nav-links">
+        <button 
+          @click="activePage = 'overview'" 
+          class="nav-btn" 
+          :class="{ active: activePage === 'overview' }"
+        >
+          <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg></span> Overview Dashboard
+        </button>
+        
+        <button 
+          @click="activePage = 'detail'" 
+          class="nav-btn" 
+          :class="{ active: activePage === 'detail' }"
+        >
+          <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></span> Detail Analisis
+        </button>
+        
+        <button 
+          @click="activePage = 'alarms'" 
+          class="nav-btn" 
+          :class="{ active: activePage === 'alarms' }"
+        >
+          <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg></span> Log Alarm 
+          <span v-if="activeAlarms.length > 0" class="badge-count animate-pulse">
+            {{ activeAlarms.length }}
+          </span>
+        </button>
+        
+        <button 
+          @click="activePage = 'devices'" 
+          class="nav-btn" 
+          :class="{ active: activePage === 'devices' }"
+        >
+          <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg></span> Device Manager
+        </button>
+      </nav>
+      
+      <!-- Connected Devices Sublist -->
+      <div class="sidebar-devices-sec">
+        <h4>Telemetry List</h4>
+        <div class="device-mini-list">
+          <div 
+            v-for="d in devicesList" 
+            :key="d.id"
+            @click="selectDevice(d.id)"
+            class="mini-item"
+            :class="{ active: selectedDeviceId === d.id && activePage === 'detail', [getDeviceStatus(d.id)]: true }"
+          >
+            <span class="status-indicator"></span>
+            <div class="meta">
+              <span class="name">{{ d.namaSensor }}</span>
+              <span class="loc">{{ d.lokasi }}</span>
+            </div>
+            <span class="mini-val text-mono" v-if="getDeviceTelemetry(d.id)">
+              {{ Math.max(getDeviceTelemetry(d.id).zVelocity, getDeviceTelemetry(d.id).xVelocity).toFixed(1) }}
+            </span>
           </div>
         </div>
-
-        <!-- Card 2: Peak Vibration -->
-        <div class="metric-card">
-          <h3>Peak Vibration (Log)</h3>
-          <div class="value-display">
-            <span class="number text-gradient">{{ maxVibration.toFixed(2) }}</span>
-            <span class="unit">mm/s</span>
-          </div>
-          <p class="description text-muted">Nilai getaran tertinggi yang terekam dalam sesi log saat ini.</p>
+      </div>
+      
+      <div class="user-block">
+        <div class="user-info">
+          <span class="role-badge" :class="userRole">{{ userRole.toUpperCase() }}</span>
+          <span class="username">{{ username }}</span>
         </div>
+        <button @click="handleLogout" class="btn-logout">LOGOUT</button>
+      </div>
+    </aside>
 
-        <!-- Card 3: Standar ISO 10816 -->
-        <div class="metric-card">
-          <h3>Panduan Threshold (ISO 10816)</h3>
-          <div class="threshold-legend">
-            <div class="legend-item">
-              <span class="legend-dot dot-safe"></span>
-              <span class="legend-label">Safe (&lt; 3.5 mm/s)</span>
-            </div>
-            <div class="legend-item">
-              <span class="legend-dot dot-warning"></span>
-              <span class="legend-label">Warning (3.5 - 7.1 mm/s)</span>
-            </div>
-            <div class="legend-item">
-              <span class="legend-dot dot-critical"></span>
-              <span class="legend-label">Critical (&gt; 7.1 mm/s)</span>
-            </div>
-          </div>
+    <!-- RIGHT CONTAINER -->
+    <div class="scada-content-container">
+      
+      <!-- TOP HEADER -->
+      <header class="scada-header">
+        <div class="header-left">
+          <h2>{{ activePage.toUpperCase() }}</h2>
+          <span class="server-status">
+            <span class="green-dot animate-ping"></span> Live Polling OK (3s)
+          </span>
         </div>
-      </section>
+        
+        <div class="header-right">
+          <!-- Digital Clock -->
+          <div class="clock-display text-mono">{{ currentTime }}</div>
+          
+          <!-- Dummy Mode Switcher -->
+          <button @click="isDummyMode = !isDummyMode" class="theme-btn" :class="{ 'dummy-active': isDummyMode }">
+            <span v-if="isDummyMode">
+              <svg style="vertical-align: middle; margin-right: 4px;" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect><path d="M10 8v8"></path><path d="M14 8v8"></path></svg> 
+              DUMMY
+            </span>
+            <span v-else>
+              <svg style="vertical-align: middle; margin-right: 4px;" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.59-9.21l-5.94 5.94"></path></svg> 
+              LIVE
+            </span>
+          </button>
 
-      <!-- Interactive Area -->
-      <section class="content-grid">
-        <!-- Ingestion Simulator Form -->
-        <div class="panel-card">
-          <div class="panel-header">
-            <h2>Simulator Sensor Vibrasi</h2>
-            <p class="panel-subtitle">Kirim data getaran untuk menguji arsitektur end-to-end</p>
-          </div>
-          <form @submit.prevent="submitData" class="sim-form">
-            <div class="form-group">
-              <label for="sensor">Nama Sensor / Peralatan</label>
-              <input 
-                type="text" 
-                id="sensor" 
-                v-model="sensorName" 
-                placeholder="cth: Pump-01A"
-                required
-              />
+          <!-- Theme Switcher -->
+          <button @click="theme = theme === 'dark' ? 'light' : 'dark'" class="theme-btn">
+            <span v-if="theme === 'dark'">
+              <svg style="vertical-align: middle; margin-right: 4px;" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+              LIGHT
+            </span>
+            <span v-else>
+              <svg style="vertical-align: middle; margin-right: 4px;" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+              DARK
+            </span>
+          </button>
+        </div>
+      </header>
+
+      <!-- MAIN SCROLLABLE CONTENT AREA -->
+      <main class="scada-main-content">
+        
+        <!-- PAGE A: OVERVIEW DASHBOARD -->
+        <section v-if="activePage === 'overview'" class="page-sec flex-col">
+          <!-- Analytics counters -->
+          <div class="stats-row" style="margin-bottom: 24px;">
+            <div class="glass-panel stat-card">
+              <span class="lbl">TOTAL PERANGKAT</span>
+              <span class="val text-mono text-gradient">{{ totalDevicesCount }}</span>
             </div>
-            <div class="form-group">
-              <label for="vibration">Nilai Vibrasi (Velocity mm/s RMS)</label>
-              <div class="input-range-container">
-                <input 
-                  type="range" 
-                  id="vibration-range"
-                  v-model="vibrationValue" 
-                  min="0.1" 
-                  max="12.0" 
-                  step="0.05"
-                  class="range-slider"
-                />
-                <div class="input-number-wrapper">
-                  <input 
-                    type="number" 
-                    id="vibration"
-                    v-model="vibrationValue" 
-                    min="0.1" 
-                    max="20.0" 
-                    step="0.01"
-                    required
-                  />
-                  <span class="input-unit">mm/s</span>
+            <div class="glass-panel stat-card alarm-bg" :class="{ critical: activeAlarms.length > 0 }">
+              <span class="lbl">ALARM AKTIF SAAT INI</span>
+              <span class="val text-mono">{{ activeAlarms.length }}</span>
+            </div>
+            <div class="glass-panel stat-card">
+              <span class="lbl">STATUS MONITORING</span>
+              <span v-if="activeAlarms.length > 0" class="val" style="color: var(--status-critical); font-weight: 800;">SISTEM ALERT</span>
+              <span v-else class="val text-gradient" style="color: var(--status-safe); font-weight: 800;">SISTEM NORMAL</span>
+            </div>
+          </div>
+          
+          <!-- 5 Parameter Comparison Cards -->
+          <div class="comparison-grid" style="order: 2;">
+            <div class="glass-panel comp-card">
+              <h4>Velocity Z (mm/s)</h4>
+              <div class="comp-list">
+                <div v-for="d in devicesList" :key="'zvel-'+d.id" class="comp-bar-row">
+                  <span class="comp-lbl">{{ d.namaSensor }}</span>
+                  <div class="comp-bar-track">
+                     <div class="comp-bar-fill" :class="getDeviceStatus(d.id)" :style="{ width: Math.min(((getDeviceTelemetry(d.id)?.zVelocity || 0) / (d.setpointZVel || 10)) * 100, 100) + '%' }"></div>
+                  </div>
+                  <span class="comp-val text-mono">{{ getDeviceTelemetry(d.id)?.zVelocity?.toFixed(2) || '--' }}</span>
                 </div>
               </div>
             </div>
-            <button type="submit" class="btn-submit" :disabled="submitLoading">
-              <span v-if="submitLoading">Mengirim...</span>
-              <span v-else>Kirim Data Sensor 🚀</span>
-            </button>
-          </form>
-        </div>
-
-        <!-- Historical Logs Table -->
-        <div class="panel-card flex-grow">
-          <div class="panel-header">
-            <h2>Log Histori Sensor</h2>
-            <p class="panel-subtitle">20 data getaran teraktif yang tersimpan di PostgreSQL</p>
-          </div>
-          <div class="table-container">
-            <div v-if="logs.length === 0 && !loading" class="empty-state">
-              Belum ada data sensor terkirim. Gunakan simulator di sebelah kiri untuk mengirim data getaran pertama.
+            
+            <div class="glass-panel comp-card">
+              <h4>Velocity X (mm/s)</h4>
+              <div class="comp-list">
+                <div v-for="d in devicesList" :key="'xvel-'+d.id" class="comp-bar-row">
+                  <span class="comp-lbl">{{ d.namaSensor }}</span>
+                  <div class="comp-bar-track">
+                     <div class="comp-bar-fill" :class="getDeviceStatus(d.id)" :style="{ width: Math.min(((getDeviceTelemetry(d.id)?.xVelocity || 0) / (d.setpointXVel || 10)) * 100, 100) + '%' }"></div>
+                  </div>
+                  <span class="comp-val text-mono">{{ getDeviceTelemetry(d.id)?.xVelocity?.toFixed(2) || '--' }}</span>
+                </div>
+              </div>
             </div>
-            <table v-else class="log-table">
-              <thead>
-                <tr>
-                  <th>Waktu</th>
-                  <th>Nama Sensor</th>
-                  <th>Vibrasi</th>
-                  <th>Tingkat Bahaya</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="log in logs" :key="log.id" class="table-row">
-                  <td class="time-col">{{ formatTime(log.timestamp) }}</td>
-                  <td class="sensor-col"><strong>{{ log.sensorName }}</strong></td>
-                  <td class="value-col font-mono">{{ log.vibrationValue.toFixed(2) }} mm/s</td>
-                  <td class="status-col">
-                    <span class="badge" :class="getSeverityBadgeClass(log.vibrationValue)">
-                      {{ log.vibrationValue >= THRESHOLD_CRITICAL ? 'Critical' : log.vibrationValue >= THRESHOLD_WARNING ? 'Warning' : 'Safe' }}
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+
+            <div class="glass-panel comp-card">
+              <h4>Acceleration Z (mm/s²)</h4>
+              <div class="comp-list">
+                <div v-for="d in devicesList" :key="'zacc-'+d.id" class="comp-bar-row">
+                  <span class="comp-lbl">{{ d.namaSensor }}</span>
+                  <div class="comp-bar-track">
+                     <div class="comp-bar-fill" :class="getDeviceStatus(d.id)" :style="{ width: Math.min(((getDeviceTelemetry(d.id)?.zAcceleration || 0) / (d.setpointZAcc || 10)) * 100, 100) + '%' }"></div>
+                  </div>
+                  <span class="comp-val text-mono">{{ getDeviceTelemetry(d.id)?.zAcceleration?.toFixed(2) || '--' }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="glass-panel comp-card">
+              <h4>Acceleration X (mm/s²)</h4>
+              <div class="comp-list">
+                <div v-for="d in devicesList" :key="'xacc-'+d.id" class="comp-bar-row">
+                  <span class="comp-lbl">{{ d.namaSensor }}</span>
+                  <div class="comp-bar-track">
+                     <div class="comp-bar-fill" :class="getDeviceStatus(d.id)" :style="{ width: Math.min(((getDeviceTelemetry(d.id)?.xAcceleration || 0) / (d.setpointXAcc || 10)) * 100, 100) + '%' }"></div>
+                  </div>
+                  <span class="comp-val text-mono">{{ getDeviceTelemetry(d.id)?.xAcceleration?.toFixed(2) || '--' }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="glass-panel comp-card">
+              <h4>Temperature (°C)</h4>
+              <div class="comp-list">
+                <div v-for="d in devicesList" :key="'temp-'+d.id" class="comp-bar-row">
+                  <span class="comp-lbl">{{ d.namaSensor }}</span>
+                  <div class="comp-bar-track">
+                     <div class="comp-bar-fill" :class="getDeviceStatus(d.id)" :style="{ width: Math.min(((getDeviceTelemetry(d.id)?.temperature || 0) / (d.setpointTemp || 70)) * 100, 100) + '%' }"></div>
+                  </div>
+                  <span class="comp-val text-mono">{{ getDeviceTelemetry(d.id)?.temperature?.toFixed(1) || '--' }}</span>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
-    </main>
+          
+          <!-- Grid of all devices overview cards -->
+          <div class="devices-grid" style="order: 1;">
+            <div 
+              v-for="d in devicesList" 
+              :key="d.id"
+              class="glass-panel overview-device-card"
+              :class="getDeviceStatus(d.id)"
+            >
+              <div class="card-header">
+                <div>
+                  <h3>{{ d.namaSensor }}</h3>
+                  <span class="loc">{{ d.lokasi }}</span>
+                </div>
+                <span class="status-text">{{ getDeviceStatus(d.id).toUpperCase() }}</span>
+              </div>
+              
+              <div class="telemetry-block" v-if="getDeviceTelemetry(d.id)">
+                <div class="tel-col temp">
+                  <span class="label">TEMP</span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).temperature.toFixed(1) }} <span class="u">°C</span></span>
+                </div>
+                <div class="tel-col vibz">
+                  <span class="label">VIB Z</span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).zVelocity.toFixed(2) }} <span class="u">mm/s</span></span>
+                </div>
+                <div class="tel-col accz">
+                  <span class="label">ACC Z</span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).zAcceleration.toFixed(2) }} <span class="u">mm/s²</span></span>
+                </div>
+                <div class="tel-col vibx">
+                  <span class="label">VIB X</span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).xVelocity.toFixed(2) }} <span class="u">mm/s</span></span>
+                </div>
+                <div class="tel-col accx">
+                  <span class="label">ACC X</span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).xAcceleration.toFixed(2) }} <span class="u">mm/s²</span></span>
+                </div>
+              </div>
+              <div class="telemetry-block empty-block" v-else>
+                Belum ada data sensor terkirim
+              </div>
+              
+              <div class="card-footer">
+                <span class="slave-tag">Modbus ID: {{ d.slaveId }}</span>
+                <button @click="selectDevice(d.id)" class="btn-detail">ANALISIS DETAIL ➔</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- PAGE B: DETAIL SENSOR VIEW -->
+        <section v-else-if="activePage === 'detail'" class="page-sec">
+          <div v-if="!selectedDeviceDetails" class="empty-state glass-panel">
+            <span class="icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            </span>
+            <h3>Silakan pilih sensor pada menu sidebar untuk melakukan analisis detail</h3>
+          </div>
+          
+          <div v-else class="detail-stack-layout">
+            <!-- Top Section: Motor SVG & Analytics Cards -->
+            <div class="detail-top-section">
+              <div class="svg-wrapper">
+                <ScadaMotorSvg 
+                  :sensorName="selectedDeviceDetails.namaSensor"
+                  :velocityZ="selectedDeviceTelemetry?.zVelocity"
+                  :velocityX="selectedDeviceTelemetry?.xVelocity"
+                  :temperature="selectedDeviceTelemetry?.temperature"
+                  :setpointZ="selectedDeviceDetails.setpointZVel"
+                  :setpointX="selectedDeviceDetails.setpointXVel"
+                  :setpointTemp="selectedDeviceDetails.setpointTemp"
+                />
+              </div>
+              
+              <div class="detail-metrics-grid">
+                <MetricCard 
+                  title="Velocity Z"
+                  :value="selectedDeviceTelemetry?.zVelocity"
+                  unit="mm/s"
+                  :setpoint="selectedDeviceDetails.setpointZVel"
+                  icon="<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M2 12h4l3-9 5 18 3-9h5'/></svg>"
+                />
+                <MetricCard 
+                  title="Velocity X"
+                  :value="selectedDeviceTelemetry?.xVelocity"
+                  unit="mm/s"
+                  :setpoint="selectedDeviceDetails.setpointXVel"
+                  icon="<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M2 12h4l3-9 5 18 3-9h5'/></svg>"
+                />
+                <MetricCard 
+                  title="Accel Z"
+                  :value="selectedDeviceTelemetry?.zAcceleration"
+                  unit="mm/s²"
+                  :setpoint="selectedDeviceDetails.setpointZAcc"
+                  icon="<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/></svg>"
+                />
+                <MetricCard 
+                  title="Accel X"
+                  :value="selectedDeviceTelemetry?.xAcceleration"
+                  unit="mm/s²"
+                  :setpoint="selectedDeviceDetails.setpointXAcc"
+                  icon="<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/></svg>"
+                />
+                <MetricCard 
+                  title="Core Temp"
+                  :value="selectedDeviceTelemetry?.temperature"
+                  unit="°C"
+                  :setpoint="selectedDeviceDetails.setpointTemp"
+                  icon="<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z'/></svg>"
+                  style="grid-column: span 2;"
+                />
+              </div>
+            </div>
+            
+            <!-- Bottom Section: Historical Trend -->
+            <div class="detail-bottom-section">
+              <TrendLineChart 
+                :logs="historicalLogs"
+                :setpointTemp="selectedDeviceDetails.setpointTemp"
+                :setpointZVel="selectedDeviceDetails.setpointZVel"
+                :setpointXVel="selectedDeviceDetails.setpointXVel"
+                :setpointZAcc="selectedDeviceDetails.setpointZAcc"
+                :setpointXAcc="selectedDeviceDetails.setpointXAcc"
+                :isDarkTheme="theme === 'dark'"
+              />
+            </div>
+          </div>
+        </section>
+
+        <!-- PAGE C: LOG ALARM -->
+        <section v-else-if="activePage === 'alarms'" class="page-sec flex-col">
+          <div class="alarm-view-layout">
+            <!-- Active Alarms Card -->
+            <div class="glass-panel table-panel">
+              <div class="panel-header">
+                <h3>🚨 Alarm Aktif (Butuh Konfirmasi)</h3>
+                <span class="alarm-badge critical" v-if="activeAlarms.length > 0">
+                  {{ activeAlarms.length }} KRITIS
+                </span>
+              </div>
+              
+              <div class="table-wrapper">
+                <table class="scada-table">
+                  <thead>
+                    <tr>
+                      <th>Waktu Terdeteksi</th>
+                      <th>Objek Sensor</th>
+                      <th>Parameter</th>
+                      <th>Nilai Pengukuran</th>
+                      <th>Batas Threshold</th>
+                      <th>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="activeAlarms.length === 0">
+                      <td colspan="6" class="empty-row">Kondisi sistem aman. Tidak ada alarm aktif.</td>
+                    </tr>
+                    <tr v-for="a in activeAlarms" :key="a.id" class="alarm-row critical">
+                      <td>{{ formatDate(a.timestamp) }}</td>
+                      <td><strong>{{ a.deviceName || ('Device ID: ' + a.deviceId) }}</strong></td>
+                      <td class="text-mono">{{ a.parameter }}</td>
+                      <td class="text-mono critical-text">{{ a.value.toFixed(2) }}</td>
+                      <td class="text-mono">{{ a.threshold.toFixed(2) }}</td>
+                      <td>
+                        <button @click="acknowledgeAlarm(a.id)" class="btn-ack animate-pulse">
+                          ACKNOWLEDGE
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Historical Alarms (Acknowledged) -->
+            <div class="glass-panel table-panel">
+              <div class="panel-header">
+                <h3>📜 Riwayat Alarm Terdahulu (Acknowledged)</h3>
+              </div>
+              
+              <div class="table-wrapper">
+                <table class="scada-table">
+                  <thead>
+                    <tr>
+                      <th>Waktu</th>
+                      <th>Objek Sensor</th>
+                      <th>Parameter</th>
+                      <th>Nilai Pengukuran</th>
+                      <th>Batas Threshold</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="alarmHistory.length === 0">
+                      <td colspan="6" class="empty-row">Belum ada riwayat alarm terdahulu.</td>
+                    </tr>
+                    <tr v-for="a in alarmHistory" :key="a.id">
+                      <td>{{ formatDate(a.timestamp) }}</td>
+                      <td>{{ a.deviceName || ('Device ID: ' + a.deviceId) }}</td>
+                      <td class="text-mono">{{ a.parameter }}</td>
+                      <td class="text-mono">{{ a.value.toFixed(2) }}</td>
+                      <td class="text-mono">{{ a.threshold.toFixed(2) }}</td>
+                      <td>
+                        <span class="status-badge-text health-safe">RESOLVED</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- PAGE D: DEVICE MANAGER -->
+        <section v-else-if="activePage === 'devices'" class="page-sec flex-col">
+          <div class="glass-panel table-panel full-width">
+            <div class="panel-header">
+              <div class="title-meta">
+                <h3>💻 Manajemen Objek Sensor (Modbus RTU)</h3>
+                <p class="subtitle">Daftarkan dan konfigurasikan setpoint alarm pada perangkat RS485</p>
+              </div>
+              <button 
+                v-if="userRole === 'admin'"
+                @click="openAddDeviceModal" 
+                class="btn-add-device"
+              >
+                + Tambah Perangkat Baru
+              </button>
+            </div>
+            
+            <div class="table-wrapper">
+              <table class="scada-table">
+                <thead>
+                  <tr>
+                    <th>Slave ID</th>
+                    <th>Nama Objek Sensor</th>
+                    <th>Lokasi</th>
+                    <th>Temp Limit</th>
+                    <th>Vel-Z Limit</th>
+                    <th>Vel-X Limit</th>
+                    <th>Acc-Z Limit</th>
+                    <th>Acc-X Limit</th>
+                    <th v-if="userRole === 'admin'">Tindakan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="devicesList.length === 0">
+                    <td colspan="9" class="empty-row">Belum ada perangkat terdaftar di sistem.</td>
+                  </tr>
+                  <tr v-for="d in devicesList" :key="d.id">
+                    <td class="text-mono text-gradient">#{{ d.slaveId }}</td>
+                    <td><strong>{{ d.namaSensor }}</strong></td>
+                    <td>{{ d.lokasi }}</td>
+                    <td class="text-mono">{{ d.setpointTemp }} °C</td>
+                    <td class="text-mono">{{ d.setpointZVel }} mm/s</td>
+                    <td class="text-mono">{{ d.setpointXVel }} mm/s</td>
+                    <td class="text-mono">{{ d.setpointZAcc }} mm/s²</td>
+                    <td class="text-mono">{{ d.setpointXAcc }} mm/s²</td>
+                    <td v-if="userRole === 'admin'">
+                      <div class="action-btns">
+                        <button @click="openEditDeviceModal(d)" class="edit-btn">EDIT</button>
+                        <button @click="handleDeleteDevice(d.id)" class="del-btn">HAPUS</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
   </div>
+
+  <!-- CRUD MODAL POPUP -->
+  <DeviceModal 
+    :show="showDeviceModal"
+    :device="selectedDeviceForEdit"
+    @close="showDeviceModal = false"
+    @save="handleSaveDevice"
+  />
 </template>
 
 <style>
-/* Modern Elegant HSL CSS Design System (Custom Dark Mode) */
-:root {
-  --bg-main: #0a0d16;
-  --bg-card: rgba(18, 24, 41, 0.75);
-  --bg-input: #151a2d;
-  --border-color: rgba(255, 255, 255, 0.08);
-  --text-main: #f3f4f6;
-  --text-muted: #9ca3af;
-  
-  --primary: #6366f1;
-  --primary-glow: rgba(99, 102, 241, 0.15);
-  --accent: #a855f7;
-
-  /* HSL Colors for Statuses */
-  --color-safe: 142, 72%, 50%;       /* Emerald */
-  --color-warning: 38, 92%, 50%;     /* Amber */
-  --color-critical: 350, 89%, 60%;   /* Rose */
-}
-
-/* Global resets for standalone page styling */
-html, body {
-  margin: 0;
-  padding: 0;
+/* CSS Styling for full page layout */
+.login-viewport {
   width: 100%;
-  height: 100%;
-  background-color: var(--bg-main);
-  color: var(--text-main);
-  font-family: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
-  overflow-x: hidden;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bg-space);
 }
 
-#app {
+.login-box {
   width: 100%;
-  min-height: 100vh;
-}
-
-/* Typography Helper */
-.text-gradient {
-  background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-/* Container */
-.cms-container {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 24px;
-  min-height: 100vh;
+  max-width: 420px;
+  padding: 40px;
+  background: var(--bg-panel-solid);
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
-}
-
-/* Header Section */
-.cms-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--border-color);
-  margin-bottom: 24px;
-}
-
-.logo-area {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.logo-area h1 {
-  font-size: 1.5rem;
-  margin: 0;
-  font-weight: 800;
-  letter-spacing: 1px;
-}
-
-.accent-text {
-  background: linear-gradient(135deg, #818cf8, #c084fc);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.pulse-icon {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background-color: var(--primary);
-  box-shadow: 0 0 12px var(--primary);
-  animation: pulse-glow 2s infinite;
-}
-
-@keyframes pulse-glow {
-  0% {
-    transform: scale(0.9);
-    opacity: 0.6;
-  }
-  50% {
-    transform: scale(1.15);
-    opacity: 1;
-    box-shadow: 0 0 16px var(--primary);
-  }
-  100% {
-    transform: scale(0.9);
-    opacity: 0.6;
-  }
-}
-
-.status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background-color: rgba(255, 255, 255, 0.03);
-  padding: 6px 14px;
-  border-radius: 20px;
-  border: 1px solid var(--border-color);
-}
-
-.live-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: hsl(var(--color-safe));
-  box-shadow: 0 0 8px hsl(var(--color-safe));
-}
-
-.live-text {
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  color: var(--text-muted);
-}
-
-.btn-refresh {
-  background: none;
-  border: none;
-  color: var(--primary);
-  cursor: pointer;
-  font-size: 0.75rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: 8px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: all 0.2s;
-}
-
-.btn-refresh:hover:not(:disabled) {
-  background-color: rgba(99, 102, 241, 0.1);
-  color: #818cf8;
-}
-
-.btn-refresh:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.spinning {
-  display: inline-block;
-  animation: spin 1s infinite linear;
-}
-
-@keyframes spin {
-  100% { transform: rotate(360deg); }
-}
-
-/* Error Banner */
-.error-banner {
-  background: rgba(244, 63, 94, 0.15);
-  border: 1px solid rgba(244, 63, 94, 0.3);
-  color: #fda4af;
-  border-radius: 8px;
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 24px;
-}
-
-.error-banner p {
-  margin: 0;
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
-/* Metrics Grid */
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 20px;
-  margin-bottom: 28px;
-}
-
-.metric-card {
-  background-color: var(--bg-card);
-  border: 1px solid var(--border-color);
-  backdrop-filter: blur(12px);
   border-radius: 16px;
-  padding: 24px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-premium);
+}
+
+.login-box .logo-area {
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  min-height: 160px;
-  position: relative;
-  overflow: hidden;
-  transition: transform 0.3s, box-shadow 0.3s;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
 }
 
-.metric-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3);
+.scada-dot {
+  width: 10px;
+  height: 10px;
+  background: var(--accent-primary);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--accent-primary);
 }
 
-.metric-card h3 {
-  margin: 0 0 16px 0;
-  font-size: 0.875rem;
+.scada-dot.pulsing {
+  animation: pulse-soft 1.5s infinite;
+}
+
+.login-sub {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: var(--text-muted);
-}
-
-.value-display {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.value-display .number {
-  font-size: 3rem;
-  font-weight: 800;
-  letter-spacing: -1px;
-  line-height: 1;
-}
-
-.value-display .unit {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-/* Status Cards & Glowing border classes */
-.glow-card::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 3px;
-}
-
-.status-safe::after {
-  background: linear-gradient(90deg, hsl(var(--color-safe)), #34d399);
-}
-.status-safe {
-  box-shadow: 0 0 15px rgba(16, 185, 129, 0.05), inset 0 0 12px rgba(16, 185, 129, 0.02);
-}
-
-.status-warning::after {
-  background: linear-gradient(90deg, hsl(var(--color-warning)), #fbbf24);
-}
-.status-warning {
-  box-shadow: 0 0 20px rgba(245, 158, 11, 0.1), inset 0 0 12px rgba(245, 158, 11, 0.02);
-}
-
-.status-critical::after {
-  background: linear-gradient(90deg, hsl(var(--color-critical)), #fb7185);
-}
-.status-critical {
-  box-shadow: 0 0 30px rgba(244, 63, 94, 0.2), inset 0 0 12px rgba(244, 63, 94, 0.04);
-}
-
-.status-badge-container {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.status-label {
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--text-muted);
-}
-
-.status-badge {
-  font-size: 0.75rem;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  padding: 4px 10px;
-  border-radius: 12px;
-  text-transform: uppercase;
-}
-
-.status-safe .status-badge {
-  background-color: rgba(16, 185, 129, 0.15);
-  color: #34d399;
-}
-
-.status-warning .status-badge {
-  background-color: rgba(245, 158, 11, 0.15);
-  color: #fbbf24;
-}
-
-.status-critical .status-badge {
-  background-color: rgba(244, 63, 94, 0.2);
-  color: #fca5a5;
-  animation: pulse-critical-bg 1.5s infinite;
-}
-
-@keyframes pulse-critical-bg {
-  0%, 100% { opacity: 0.9; }
-  50% { opacity: 1; box-shadow: 0 0 10px rgba(244, 63, 94, 0.3); }
-}
-
-.meta-info {
-  margin-top: 12px;
-  font-size: 0.7rem;
-  color: var(--text-muted);
-}
-
-.description {
-  margin: 8px 0 0 0;
-  font-size: 0.75rem;
-  line-height: 1.4;
-}
-
-/* ISO Threshold Legend styles */
-.threshold-legend {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.legend-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.dot-safe { background-color: hsl(var(--color-safe)); box-shadow: 0 0 8px hsl(var(--color-safe)); }
-.dot-warning { background-color: hsl(var(--color-warning)); box-shadow: 0 0 8px hsl(var(--color-warning)); }
-.dot-critical { background-color: hsl(var(--color-critical)); box-shadow: 0 0 8px hsl(var(--color-critical)); }
-
-.legend-label {
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--text-muted);
-}
-
-/* Panels section */
-.content-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
-}
-
-.panel-card {
-  background-color: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: 20px;
-  padding: 28px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
-  flex: 1;
-  min-width: 320px;
-  display: flex;
-  flex-direction: column;
-}
-
-.flex-grow {
-  flex: 1.8;
-  min-width: 450px;
-}
-
-.panel-header {
   margin-bottom: 24px;
 }
 
-.panel-header h2 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin: 0 0 6px 0;
-}
-
-.panel-subtitle {
+.login-error {
+  background: var(--status-critical-glow);
+  color: var(--status-critical);
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.15);
   font-size: 0.8rem;
-  color: var(--text-muted);
-  margin: 0;
+  font-weight: 600;
+  margin-bottom: 20px;
 }
 
-/* Simulator Form styles */
-.sim-form {
+.login-form {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  height: 100%;
 }
 
-.form-group {
+.input-group {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.form-group label {
+.input-group label {
   font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  color: var(--text-muted);
+  font-weight: 700;
+  color: var(--text-secondary);
   text-transform: uppercase;
 }
 
-.form-group input[type="text"] {
-  background-color: var(--bg-input);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  color: var(--text-main);
-  padding: 12px 14px;
-  font-size: 0.9rem;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.form-group input[type="text"]:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-glow);
-  outline: none;
-}
-
-.input-range-container {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.range-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 6px;
+.input-group input {
   background: var(--bg-input);
-  border-radius: 3px;
-  outline: none;
-}
-
-.range-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--primary);
-  cursor: pointer;
-  box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
-  transition: transform 0.1s;
-}
-
-.range-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
-}
-
-.input-number-wrapper {
-  display: flex;
-  align-items: center;
-  position: relative;
-}
-
-.form-group input[type="number"] {
-  background-color: var(--bg-input);
   border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 12px 16px;
   border-radius: 8px;
-  color: var(--text-main);
-  padding: 10px 12px;
-  width: 100%;
-  font-size: 0.9rem;
-  font-family: monospace;
-  box-sizing: border-box;
 }
 
-.form-group input[type="number"]:focus {
-  border-color: var(--primary);
+.input-group input:focus {
   outline: none;
+  border-color: var(--accent-primary);
 }
 
-.input-unit {
-  position: absolute;
-  right: 12px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--text-muted);
-}
-
-.btn-submit {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+.login-btn {
+  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
   border: none;
-  border-radius: 8px;
   color: white;
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 700;
   padding: 14px;
-  margin-top: 12px;
-  transition: transform 0.2s, box-shadow 0.2s;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
   box-shadow: 0 4px 15px rgba(99, 102, 241, 0.25);
+  margin-top: 10px;
 }
 
-.btn-submit:hover:not(:disabled) {
+.login-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
 }
 
-.btn-submit:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.login-hint {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.6;
 }
 
-/* History logs table styles */
-.table-container {
+/* SCADA VIEWPORT LAYOUT */
+.scada-viewport {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  background-color: var(--bg-space);
+  overflow: hidden;
+}
+
+.scada-sidebar {
+  width: var(--sidebar-width);
+  height: 100%;
+  background: var(--bg-panel-solid);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.scada-sidebar .brand {
+  height: var(--header-height);
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.scada-sidebar .brand h3 {
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.pulse-icon {
+  width: 8px;
+  height: 8px;
+  background: var(--accent-cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--accent-cyan);
+}
+
+.nav-links {
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: left;
+  position: relative;
+}
+
+.nav-btn:hover {
+  background: var(--bg-input-hover);
+  color: var(--text-primary);
+}
+
+.nav-btn.active {
+  background: var(--bg-input);
+  color: var(--accent-primary);
+  border: 1px solid var(--border-color);
+}
+
+.badge-count {
+  position: absolute;
+  right: 16px;
+  background: var(--status-critical);
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Sidebar mini telemetry view */
+.sidebar-devices-sec {
+  flex-grow: 1;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-devices-sec h4 {
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+  padding-left: 8px;
+}
+
+.device-mini-list {
   flex-grow: 1;
   overflow-y: auto;
-  max-height: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 4px;
 }
 
-.empty-state {
-  text-align: center;
+.mini-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.mini-item:hover {
+  background: var(--bg-input-hover);
+}
+
+.mini-item.active {
+  background: var(--bg-input);
+  border-color: var(--border-color);
+}
+
+.mini-item .status-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.mini-item.safe .status-indicator {
+  background-color: var(--status-safe);
+  box-shadow: 0 0 6px var(--status-safe);
+}
+
+.mini-item.warning .status-indicator {
+  background-color: var(--status-warning);
+  box-shadow: 0 0 6px var(--status-warning);
+}
+
+.mini-item.critical .status-indicator {
+  background-color: var(--status-critical);
+  box-shadow: 0 0 6px var(--status-critical);
+}
+
+.mini-item .meta {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  overflow: hidden;
+}
+
+.mini-item .meta .name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mini-item .meta .loc {
+  font-size: 0.65rem;
   color: var(--text-muted);
-  font-size: 0.85rem;
-  padding: 40px 20px;
-  border: 1px dashed var(--border-color);
-  border-radius: 12px;
-  background-color: rgba(255, 255, 255, 0.01);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.log-table {
+.mini-item .mini-val {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.user-block {
+  padding: 20px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.role-badge {
+  font-size: 0.6rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.role-badge.admin {
+  background: var(--status-warning-glow);
+  color: var(--status-warning);
+}
+
+.role-badge.user {
+  background: var(--status-safe-glow);
+  color: var(--status-safe);
+}
+
+.username {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.btn-logout {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 8px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-logout:hover {
+  background: var(--status-critical-glow);
+  color: var(--status-critical);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+/* SCADA CONTENT GRID CONTAINER */
+.scada-content-container {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.scada-header {
+  height: var(--header-height);
+  padding: 0 32px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-panel-solid);
+  flex-shrink: 0;
+}
+
+.scada-header h2 {
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  display: inline-block;
+  margin-right: 16px;
+}
+
+.server-status {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.green-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--status-safe);
+  border-radius: 50%;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.clock-display {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  padding: 6px 14px;
+  border-radius: 8px;
+}
+
+.theme-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.theme-btn:hover {
+  background: var(--bg-input-hover);
+  color: var(--text-primary);
+}
+
+/* MAIN SCROLLABLE VIEWPORT */
+.scada-main-content {
+  flex-grow: 1;
+  padding: 32px;
+  overflow-y: auto;
+  background-color: var(--bg-space);
+}
+
+.page-sec {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  gap: 24px;
+}
+
+.page-sec.flex-col {
+  flex-direction: column;
+}
+
+/* OVERVIEW DASHBOARD SPECIFICS */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.stat-card {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stat-card .lbl {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.stat-card .val {
+  font-size: 2.2rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.alarm-bg.critical {
+  background: var(--status-critical-glow);
+  border-color: rgba(239, 68, 68, 0.2);
+  color: var(--status-critical);
+}
+
+.devices-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 24px;
+}
+
+.overview-device-card {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: relative;
+}
+
+.overview-device-card.critical {
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.overview-device-card.warning {
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.overview-device-card .card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.overview-device-card h3 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.overview-device-card .loc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.overview-device-card .status-text {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.overview-device-card.safe .status-text {
+  color: var(--status-safe);
+  background: var(--status-safe-glow);
+}
+.overview-device-card.warning .status-text {
+  color: var(--status-warning);
+  background: var(--status-warning-glow);
+}
+.overview-device-card.critical .status-text {
+  color: var(--status-critical);
+  background: var(--status-critical-glow);
+}
+
+.telemetry-block {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  grid-template-areas: 
+    "temp vibz accz"
+    "temp vibx accx";
+  gap: 12px;
+  background: var(--bg-input);
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.telemetry-block.empty-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  height: 62px;
+}
+
+.telemetry-block .tel-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tel-col.temp {
+  grid-area: temp;
+  justify-content: center;
+  border-right: 1px solid var(--border-color);
+  padding-right: 12px;
+}
+
+.tel-col.vibz { grid-area: vibz; }
+.tel-col.accz { grid-area: accz; }
+.tel-col.vibx { grid-area: vibx; }
+.tel-col.accx { grid-area: accx; }
+
+.telemetry-block .tel-col .label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.telemetry-block .tel-col .num {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.telemetry-block .tel-col .num .u {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.overview-device-card .card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+}
+
+.slave-tag {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.btn-detail {
+  background: transparent;
+  border: none;
+  color: var(--accent-primary);
+  font-size: 0.75rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.btn-detail:hover {
+  text-decoration: underline;
+}
+
+/* SENSORS DETAIL VIEW STACK LAYOUT */
+.detail-stack-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+}
+
+.detail-top-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 1024px) {
+  .detail-top-section {
+    grid-template-columns: 1fr;
+  }
+}
+
+.detail-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.svg-wrapper {
+  width: 100%;
+  height: 100%;
+}
+
+.detail-bottom-section {
+  width: 100%;
+  min-height: 350px;
+}
+
+/* COMPARISON GRID CARDS */
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1200px) {
+  .comparison-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.comp-card {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.comp-card h4 {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 8px;
+}
+
+.comp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.comp-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.comp-lbl {
+  font-size: 0.65rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.comp-bar-track {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-input);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.comp-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--status-safe);
+  transition: width 0.3s ease;
+}
+
+.comp-bar-fill.warning {
+  background: var(--status-warning);
+}
+
+.comp-bar-fill.critical {
+  background: var(--status-critical);
+}
+
+.comp-val {
+  font-size: 0.75rem;
+  font-weight: 700;
+  align-self: flex-end;
+}
+
+/* LOG ALARM SPECIFICS */
+.alarm-view-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+}
+
+.table-panel {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.table-panel.full-width {
+  width: 100%;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-header h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.panel-header .subtitle {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.alarm-badge {
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.alarm-badge.critical {
+  background: var(--status-critical-glow);
+  color: var(--status-critical);
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.scada-table {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
 }
 
-.log-table th {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  letter-spacing: 0.5px;
-  padding: 10px 14px;
+.scada-table th {
+  padding: 12px 16px;
   border-bottom: 2px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
-.log-table td {
-  padding: 12px 14px;
+.scada-table td {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
   font-size: 0.85rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
 }
 
-.table-row {
-  transition: background-color 0.2s;
+.scada-table tbody tr:hover {
+  background: var(--bg-input-hover);
 }
 
-.table-row:hover {
-  background-color: rgba(255, 255, 255, 0.02);
-}
-
-.time-col {
+.scada-table .empty-row {
+  text-align: center;
   color: var(--text-muted);
-  font-size: 0.75rem;
+  padding: 40px;
 }
 
-.value-col {
-  font-weight: 600;
+.alarm-row.critical {
+  background: rgba(239, 68, 68, 0.03);
 }
 
-/* Badges severity classes */
-.badge {
+.critical-text {
+  color: var(--status-critical);
+  font-weight: 700;
+}
+
+.btn-ack {
+  background: var(--status-critical);
+  border: none;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.btn-ack:hover {
+  background: #dc2626;
+}
+
+.btn-add-device {
+  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+  border: none;
+  color: white;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.2);
+}
+
+.btn-add-device:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
+}
+
+.action-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-btn, .del-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  padding: 4px 10px;
+  border-radius: 4px;
   font-size: 0.7rem;
   font-weight: 700;
-  padding: 4px 8px;
-  border-radius: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  display: inline-block;
+  cursor: pointer;
 }
 
-.badge-safe {
-  background-color: rgba(16, 185, 129, 0.12);
-  color: #34d399;
+.edit-btn {
+  color: var(--accent-primary);
+  border-color: rgba(99, 102, 241, 0.2);
 }
 
-.badge-warning {
-  background-color: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
+.edit-btn:hover {
+  background: var(--primary-glow);
 }
 
-.badge-critical {
-  background-color: rgba(244, 63, 94, 0.15);
-  color: #f43f5e;
+.del-btn {
+  color: var(--status-critical);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.del-btn:hover {
+  background: var(--status-critical-glow);
 }
 </style>

@@ -42,9 +42,11 @@ export class UserService {
       const adminUser = await this.createUser("admin", "adminpassword", "admin");
       const standardUser = await this.createUser("user", "userpassword", "user");
       
-      console.log(`Default users seeded: 
+      if (adminUser && standardUser) {
+        console.log(`Default users seeded: 
 - Username: ${adminUser.username} (role: ${adminUser.role})
 - Username: ${standardUser.username} (role: ${standardUser.role})`);
+      }
     } else {
       console.log("Database already has users. Skipping seeding.");
     }
