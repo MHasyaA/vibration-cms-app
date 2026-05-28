@@ -13,7 +13,13 @@ export const modbusController = new Elysia({ prefix: "/modbus" })
     async ({ set }) => {
       try {
         const all = await modbusConnectionService.getAllConnections();
-        return { success: true, data: all };
+        const { modbusPollingService } = await import("../services/modbusPollingService");
+        const states = modbusPollingService.getConnectionStates();
+        const enriched = all.map((conn: any) => ({
+          ...conn,
+          isOnline: conn.isActive ? (states.get(conn.id)?.isOnline ?? false) : false,
+        }));
+        return { success: true, data: enriched };
       } catch (error: any) {
         set.status = 500;
         return { success: false, message: error.message || "Gagal mengambil data koneksi" };
@@ -99,35 +105,126 @@ export const modbusController = new Elysia({ prefix: "/modbus" })
   )
 
   // GET /api/modbus/connections/:id/test - Test connection (Admin only)
-  // Note: this is a dry-run check - returns config info since serial port testing
-  // requires actual hardware. Polling service handles real connectivity.
+  // Connects to Modbus TCP and attempts a single register read to verify connectivity.
   .get(
     "/connections/:id/test",
-    async ({ params: { id }, set }) => {
+    async ({ params: { id } }) => {
       try {
         const connId = parseInt(id);
         if (isNaN(connId)) {
-          set.status = 400;
           return { success: false, message: "ID tidak valid" };
         }
         const conn = await modbusConnectionService.getConnectionById(connId);
         if (!conn) {
-          set.status = 404;
           return { success: false, message: "Koneksi tidak ditemukan" };
         }
-        // Return config summary - actual port test requires hardware
-        return {
-          success: true,
-          message: `Konfigurasi untuk ${conn.ipAddress}:${conn.tcpPort} valid. Koneksi aktual memerlukan gateway/device Modbus TCP.`,
-          data: {
-            ipAddress: conn.ipAddress,
-            tcpPort: conn.tcpPort,
-            pollInterval: conn.pollInterval,
-            isActive: conn.isActive,
-          },
-        };
+
+        // Uji coba koneksi aktif menggunakan modbus-serial
+        let ModbusRTU: any;
+        try {
+          const modbusModuleName = "modbus-serial";
+          const mod = await import(modbusModuleName);
+          ModbusRTU = mod.default;
+        } catch {
+          return {
+            success: false,
+            message: "Library 'modbus-serial' tidak terinstall di backend.",
+          };
+        }
+
+        const client = new ModbusRTU();
+        try {
+          client.setTimeout(2000);
+          await client.connectTCP(conn.ipAddress, { port: conn.tcpPort });
+
+          const devices = await modbusConnectionService.getDevicesByConnectionId(connId);
+          let readVal: number | null = null;
+          let testMessage = "";
+
+          if (devices.length > 0) {
+            // Temukan device yang memiliki setidaknya satu register terkonfigurasi
+            const activeDev = devices.find(
+              (d) => d.regTemp !== null || d.regZVel !== null || d.regXVel !== null
+            );
+
+            if (activeDev) {
+              client.setID(activeDev.slaveId);
+              const regAddr =
+                activeDev.regTemp !== null
+                  ? activeDev.regTemp
+                  : activeDev.regZVel !== null
+                  ? activeDev.regZVel
+                  : activeDev.regXVel;
+
+              if (regAddr !== null) {
+                const dataType = activeDev.regDataType || "float32";
+                const byteOrder = activeDev.regByteOrder || "BE";
+                const regsPerValue = dataType === "float32" ? 2 : 1;
+
+                const result = await client.readHoldingRegisters(regAddr, regsPerValue);
+                const buf = Buffer.from(result.buffer);
+
+                if (dataType === "float32") {
+                  readVal = byteOrder === "BE" ? buf.readFloatBE(0) : buf.readFloatLE(0);
+                } else if (dataType === "uint16") {
+                  readVal = byteOrder === "BE" ? buf.readUInt16BE(0) : buf.readUInt16LE(0);
+                } else {
+                  readVal = byteOrder === "BE" ? buf.readInt16BE(0) : buf.readInt16LE(0);
+                }
+
+                if (readVal === 0) {
+                  testMessage = `Terhubung ke ${conn.ipAddress}:${conn.tcpPort} (Slave #${activeDev.slaveId}). Data register ${regAddr} bernilai 0 (Pastikan register terisi data).`;
+                } else {
+                  testMessage = `Terhubung ke ${conn.ipAddress}:${conn.tcpPort} (Slave #${activeDev.slaveId}). Sukses membaca register ${regAddr} = ${readVal.toFixed(2)}.`;
+                }
+              } else {
+                // Device ada tapi semua regAddress null, baca default 0
+                client.setID(activeDev.slaveId);
+                const result = await client.readHoldingRegisters(0, 1);
+                readVal = result.data[0];
+                testMessage = `Terhubung ke ${conn.ipAddress}:${conn.tcpPort} (Slave #${activeDev.slaveId}). Alamat register belum di-map, sukses membaca default register 0 = ${readVal}.`;
+              }
+            } else {
+              // Jika device ada tapi register belum di-map, baca register 0 default unit 1
+              client.setID(1);
+              const result = await client.readHoldingRegisters(0, 1);
+              readVal = result.data[0];
+              testMessage = `Terhubung ke ${conn.ipAddress}:${conn.tcpPort} (Slave #1). Sukses membaca default register 0 = ${readVal}.`;
+            }
+          } else {
+            // Jika tidak ada device terdaftar, baca register 0 default unit 1
+            client.setID(1);
+            const result = await client.readHoldingRegisters(0, 1);
+            readVal = result.data[0];
+            testMessage = `Terhubung ke ${conn.ipAddress}:${conn.tcpPort} (Slave #1). Sukses membaca default register 0 = ${readVal}.`;
+          }
+
+          await client.close();
+          return {
+            success: true,
+            message: testMessage,
+            data: { value: readVal },
+          };
+        } catch (err: any) {
+          try {
+            await client.close();
+          } catch {}
+
+          let errorMsg = err.message || "Gagal menghubungi device";
+          if (errorMsg.includes("ECONNREFUSED")) {
+            errorMsg = "Koneksi ditolak (Connection Refused). Pastikan IP dan Port simulator Modbus TCP sudah benar dan sedang berjalan.";
+          } else if (errorMsg.includes("ETIMEDOUT") || errorMsg.includes("timeout")) {
+            errorMsg = "Koneksi habis waktu (Timeout). Pastikan IP, Port, dan rute jaringan ke simulator sudah benar.";
+          } else if (errorMsg.includes("EHOSTUNREACH")) {
+            errorMsg = "Host tidak dapat dijangkau. Periksa sambungan jaringan dan IP Address Anda.";
+          }
+
+          return {
+            success: false,
+            message: errorMsg,
+          };
+        }
       } catch (error: any) {
-        set.status = 500;
         return { success: false, message: error.message || "Gagal test koneksi" };
       }
     },

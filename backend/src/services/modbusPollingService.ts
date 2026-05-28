@@ -31,8 +31,14 @@ export class ModbusPollingService {
   private clients: Map<number, any> = new Map();
   // Map of connectionId -> interval timer
   private timers: Map<number, Timer> = new Map();
+  // Map of connectionId -> runtime connection status
+  private connectionStates: Map<number, { isOnline: boolean; lastSuccess?: Date }> = new Map();
   // Track if the service has been started
   private isRunning = false;
+
+  getConnectionStates() {
+    return this.connectionStates;
+  }
 
   /**
    * Start polling for all active connections in the database.
@@ -84,14 +90,16 @@ export class ModbusPollingService {
       });
       client.setTimeout(connection.timeout);
       this.clients.set(connection.id, client);
+      this.connectionStates.set(connection.id, { isOnline: true, lastSuccess: new Date() });
       console.log(`[Modbus] Connected to Modbus TCP @ ${connection.ipAddress}:${connection.tcpPort}`);
     } catch (err: any) {
-      console.error(`[Modbus] Failed to connect to Modbus TCP at ${connection.ipAddress}:${connection.tcpPort}:`, err.message);
-      return; // Skip this connection, don't crash
+      this.connectionStates.set(connection.id, { isOnline: false });
+      console.error(`[Modbus] Initial connection failed to ${connection.ipAddress}:${connection.tcpPort}:`, err.message);
+      // Jangan return, tetap jalankan interval timer agar bisa reconnect otomatis
     }
 
     const timer = setInterval(async () => {
-      await this.pollConnection(connection.id, client);
+      await this.pollConnection(connection.id, connection);
     }, connection.pollInterval);
 
     this.timers.set(connection.id, timer);
@@ -101,26 +109,89 @@ export class ModbusPollingService {
   /**
    * Execute one polling cycle for a connection: read all its devices sequentially.
    */
-  private async pollConnection(connectionId: number, client: any) {
+  private async pollConnection(connectionId: number, connection: any) {
+    let client = this.clients.get(connectionId);
+
+    // Jika client belum terbuat atau koneksi terputus (isOpen = false), coba reconnect
+    if (!client || !client.isOpen) {
+      let ModbusRTU: any;
+      try {
+        const modbusModuleName = "modbus-serial";
+        const mod = await import(modbusModuleName);
+        ModbusRTU = mod.default;
+      } catch {
+        this.connectionStates.set(connectionId, { isOnline: false });
+        return;
+      }
+
+      if (!client) {
+        client = new ModbusRTU();
+      }
+
+      try {
+        client.setTimeout(connection.timeout || 2000);
+        await client.connectTCP(connection.ipAddress, { port: connection.tcpPort });
+        this.clients.set(connectionId, client);
+        this.connectionStates.set(connectionId, { isOnline: true, lastSuccess: new Date() });
+        console.log(`[Modbus] Reconnected to Modbus TCP @ ${connection.ipAddress}:${connection.tcpPort}`);
+      } catch (err: any) {
+        this.connectionStates.set(connectionId, { isOnline: false });
+        console.error(`[Modbus] Reconnection failed to ${connection.ipAddress}:${connection.tcpPort}:`, err.message);
+        try {
+          await client.close();
+        } catch {}
+        this.clients.delete(connectionId);
+        return; // Lewati poll cycle kali ini
+      }
+    }
+
     try {
       const connectedDevices = await deviceService.getDevicesByConnectionId(connectionId);
+      let successfulReads = 0;
+      let totalDevicesWithRegs = 0;
 
       for (const device of connectedDevices) {
         // Skip devices that don't have register mapping configured
         if (device.regTemp === null && device.regZVel === null) {
           continue;
         }
+        totalDevicesWithRegs++;
 
         try {
           client.setID(device.slaveId);
           const reading = await this.readDeviceRegisters(client, device);
           await dataService.insertSensorLog({ deviceId: device.id, ...reading });
+          successfulReads++;
         } catch (err: any) {
           console.error(`[Modbus] Error reading slave #${device.slaveId} (${device.namaSensor}):`, err.message);
-          // Continue to next device - don't let one failure stop the whole bus
+          
+          // Jika terjadi error koneksi socket closed atau timeout, putuskan client agar reconnect pada cycle berikutnya
+          const errMsg = err.message || "";
+          if (
+            errMsg.includes("closed") || 
+            errMsg.includes("Lost") || 
+            errMsg.includes("port") || 
+            errMsg.includes("Timeout") ||
+            errMsg.includes("ECONNRESET")
+          ) {
+            try {
+              await client.close();
+            } catch {}
+            this.clients.delete(connectionId);
+            this.connectionStates.set(connectionId, { isOnline: false });
+            return; // Putuskan cycle ini langsung agar tidak berulang kali memicu error port mati
+          }
         }
       }
+
+      // Mark the connection state based on reads
+      if (totalDevicesWithRegs > 0 && successfulReads === 0) {
+        this.connectionStates.set(connectionId, { isOnline: false });
+      } else {
+        this.connectionStates.set(connectionId, { isOnline: true, lastSuccess: new Date() });
+      }
     } catch (err: any) {
+      this.connectionStates.set(connectionId, { isOnline: false });
       console.error(`[Modbus] Error during poll cycle for connectionId ${connectionId}:`, err.message);
     }
   }
@@ -177,6 +248,9 @@ export class ModbusPollingService {
       } catch { /* ignore close errors */ }
       this.clients.delete(connectionId);
     }
+
+    // Clear runtime connection status
+    this.connectionStates.delete(connectionId);
   }
 
   /**

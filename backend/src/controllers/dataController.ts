@@ -14,9 +14,42 @@ export const dataController = new Elysia({ prefix: "/data" })
     async ({ set }) => {
       try {
         const data = await dataService.getRealtimeData();
+        
+        // Periksa status runtime koneksi Modbus TCP
+        const { modbusPollingService } = await import("../services/modbusPollingService");
+        const states = modbusPollingService.getConnectionStates();
+        
+        // Ambil daftar semua device untuk mencocokkan deviceId -> connectionId
+        const { DeviceService } = await import("../services/deviceService");
+        const deviceService = new DeviceService();
+        const allDevices = await deviceService.getAllDevices();
+        
+        const deviceConnMap = new Map<number, number | null>();
+        allDevices.forEach((d: any) => {
+          deviceConnMap.set(d.id, d.connectionId);
+        });
+
+        const enrichedData = data.map((item: any) => {
+          const connId = deviceConnMap.get(item.deviceId);
+          const isOnline = connId ? (states.get(connId)?.isOnline ?? false) : false;
+          
+          if (!isOnline) {
+            // Jika koneksi Modbus offline, jadikan seluruh data telemetri null (kosong)
+            return {
+              ...item,
+              temperature: null,
+              zVelocity: null,
+              xVelocity: null,
+              zAcceleration: null,
+              xAcceleration: null,
+            };
+          }
+          return item;
+        });
+
         return {
           success: true,
-          data,
+          data: enrichedData,
         };
       } catch (error: any) {
         set.status = 500;

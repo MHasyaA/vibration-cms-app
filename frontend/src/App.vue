@@ -352,7 +352,7 @@ function getDeviceStatus(deviceId: number) {
   const tel = getDeviceTelemetry(deviceId);
   const dev = devicesList.value.find(d => d.id === deviceId);
   
-  if (!tel || !dev) return 'unknown';
+  if (!tel || !dev || tel.temperature === null || tel.zVelocity === null) return 'unknown';
   
   const tempLimit = dev.setpointTemp || 70;
   const zVelLimit = dev.setpointZVel || 7.1;
@@ -367,10 +367,29 @@ function getDeviceStatus(deviceId: number) {
   return 'safe';
 }
 
+function isDeviceOnline(device: any): boolean {
+  if (!device || !device.connectionId) return false;
+  const conn = modbusConnections.value.find((c: any) => c.id === device.connectionId);
+  return conn ? conn.isOnline : false;
+}
+
+function getHintValue(val: any, decimals = 1) {
+  if (val === undefined || val === null || isNaN(Number(val))) return 'N/A';
+  return Number(val).toFixed(decimals);
+}
+
+function getHintClass(val: any) {
+  if (val === undefined || val === null || isNaN(Number(val))) return 'hint-null';
+  if (Number(val) === 0) return 'hint-zero';
+  return 'hint-ok';
+}
+
 function formatDate(isoString: string) {
   if (!isoString) return '--/--/----';
   const d = new Date(isoString);
-  return d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  // Tambah 7 jam (7 * 60 * 60 * 1000 ms) untuk Waktu Indonesia Barat (WIB)
+  const wibDate = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+  return wibDate.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + wibDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 }
 
 // --- Live Clock ---
@@ -478,6 +497,7 @@ function startPolling() {
     await fetchRealtimeTelemetries();
     await fetchAlarms();
     await fetchAnalyticsSummary();
+    await fetchModbusConnections();
     if (selectedDeviceId.value !== null && activePage.value === 'detail') {
       await fetchHistoricalTrend(selectedDeviceId.value);
     }
@@ -616,7 +636,11 @@ onUnmounted(() => {
             :key="d.id"
             @click="selectDevice(d.id)"
             class="mini-item"
-            :class="{ active: selectedDeviceId === d.id && activePage === 'detail', [getDeviceStatus(d.id)]: true }"
+            :class="{ 
+              active: selectedDeviceId === d.id && activePage === 'detail', 
+              'conn-ok': isDeviceOnline(d), 
+              'conn-err': !isDeviceOnline(d) 
+            }"
           >
             <span class="status-indicator"></span>
             <div class="meta">
@@ -624,7 +648,7 @@ onUnmounted(() => {
               <span class="loc">{{ d.lokasi }}</span>
             </div>
             <span class="mini-val text-mono" v-if="getDeviceTelemetry(d.id)">
-              {{ Math.max(getDeviceTelemetry(d.id).zVelocity, getDeviceTelemetry(d.id).xVelocity).toFixed(1) }}
+              {{ (Math.max(getDeviceTelemetry(d.id)?.zVelocity || 0, getDeviceTelemetry(d.id)?.xVelocity || 0)).toFixed(1) }}
             </span>
           </div>
         </div>
@@ -784,29 +808,34 @@ onUnmounted(() => {
                   <h3>{{ d.namaSensor }}</h3>
                   <span class="loc">{{ d.lokasi }}</span>
                 </div>
-                <span class="status-text">{{ getDeviceStatus(d.id).toUpperCase() }}</span>
+                <div class="status-wrapper" style="text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
+                  <span class="status-text">{{ getDeviceStatus(d.id).toUpperCase() }}</span>
+                  <div class="last-update-hint" v-if="getDeviceStatus(d.id) === 'unknown' && getDeviceTelemetry(d.id)?.timestamp">
+                    Last Update: {{ formatDate(getDeviceTelemetry(d.id).timestamp) }}
+                  </div>
+                </div>
               </div>
               
               <div class="telemetry-block" v-if="getDeviceTelemetry(d.id)">
                 <div class="tel-col temp">
                   <span class="label">TEMP</span>
-                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).temperature.toFixed(1) }} <span class="u">°C</span></span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).temperature?.toFixed(1) ?? '--' }} <span class="u">°C</span></span>
                 </div>
                 <div class="tel-col vibz">
                   <span class="label">VIB Z</span>
-                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).zVelocity.toFixed(2) }} <span class="u">mm/s</span></span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).zVelocity?.toFixed(2) ?? '--' }} <span class="u">mm/s</span></span>
                 </div>
                 <div class="tel-col accz">
                   <span class="label">ACC Z</span>
-                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).zAcceleration.toFixed(2) }} <span class="u">mm/s²</span></span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).zAcceleration?.toFixed(2) ?? '--' }} <span class="u">mm/s²</span></span>
                 </div>
                 <div class="tel-col vibx">
                   <span class="label">VIB X</span>
-                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).xVelocity.toFixed(2) }} <span class="u">mm/s</span></span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).xVelocity?.toFixed(2) ?? '--' }} <span class="u">mm/s</span></span>
                 </div>
                 <div class="tel-col accx">
                   <span class="label">ACC X</span>
-                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).xAcceleration.toFixed(2) }} <span class="u">mm/s²</span></span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).xAcceleration?.toFixed(2) ?? '--' }} <span class="u">mm/s²</span></span>
                 </div>
               </div>
               <div class="telemetry-block empty-block" v-else>
@@ -1071,8 +1100,8 @@ onUnmounted(() => {
             <div v-else class="conn-card-list">
               <div v-for="conn in modbusConnections" :key="conn.id" class="conn-card glass-panel">
                 <div class="conn-card-left">
-                  <div class="conn-port-badge" :class="{ 'conn-active': conn.isActive }">
-                    <span class="conn-status-dot" :class="{ 'active': conn.isActive }"></span>
+                  <div class="conn-port-badge" :class="{ 'conn-active': conn.isOnline }">
+                    <span class="conn-status-dot" :class="{ 'active': conn.isOnline }"></span>
                     <span class="text-mono">{{ conn.ipAddress }}:{{ conn.tcpPort }}</span>
                   </div>
                   <div class="conn-meta">
@@ -1080,7 +1109,8 @@ onUnmounted(() => {
                   </div>
                 </div>
                 <div class="conn-card-right">
-                  <span v-if="conn.isActive" class="badge-active">AKTIF</span>
+                  <span v-if="conn.isOnline" class="badge-active" style="background: rgba(16, 185, 129, 0.1); color: var(--status-safe); border: 1px solid rgba(16, 185, 129, 0.2);">ONLINE</span>
+                  <span v-else-if="conn.isActive" class="badge-inactive" style="background: rgba(239, 68, 68, 0.1); color: var(--status-critical); border: 1px solid rgba(239, 68, 68, 0.2);">OFFLINE</span>
                   <span v-else class="badge-inactive">NON-AKTIF</span>
 
                   <!-- Test result -->
@@ -1136,11 +1166,46 @@ onUnmounted(() => {
                       <span v-if="d.connectionId" class="text-mono" style="color: var(--accent-primary);">{{ getConnectionName(d.connectionId) }}</span>
                       <span v-else class="badge-unconfigured">belum dikonfigurasi</span>
                     </td>
-                    <td class="text-mono">{{ d.regTemp !== null && d.regTemp !== undefined ? d.regTemp : '—' }}</td>
-                    <td class="text-mono">{{ d.regZVel !== null && d.regZVel !== undefined ? d.regZVel : '—' }}</td>
-                    <td class="text-mono">{{ d.regXVel !== null && d.regXVel !== undefined ? d.regXVel : '—' }}</td>
-                    <td class="text-mono">{{ d.regZAcc !== null && d.regZAcc !== undefined ? d.regZAcc : '—' }}</td>
-                    <td class="text-mono">{{ d.regXAcc !== null && d.regXAcc !== undefined ? d.regXAcc : '—' }}</td>
+                    <td class="text-mono">
+                      <div class="reg-cell-wrapper">
+                        <span class="reg-addr">{{ d.regTemp !== null && d.regTemp !== undefined ? d.regTemp : '—' }}</span>
+                        <span v-if="d.regTemp !== null && d.regTemp !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.temperature)">
+                          {{ getHintValue(getDeviceTelemetry(d.id)?.temperature, 1) }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="text-mono">
+                      <div class="reg-cell-wrapper">
+                        <span class="reg-addr">{{ d.regZVel !== null && d.regZVel !== undefined ? d.regZVel : '—' }}</span>
+                        <span v-if="d.regZVel !== null && d.regZVel !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.zVelocity)">
+                          {{ getHintValue(getDeviceTelemetry(d.id)?.zVelocity, 2) }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="text-mono">
+                      <div class="reg-cell-wrapper">
+                        <span class="reg-addr">{{ d.regXVel !== null && d.regXVel !== undefined ? d.regXVel : '—' }}</span>
+                        <span v-if="d.regXVel !== null && d.regXVel !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.xVelocity)">
+                          {{ getHintValue(getDeviceTelemetry(d.id)?.xVelocity, 2) }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="text-mono">
+                      <div class="reg-cell-wrapper">
+                        <span class="reg-addr">{{ d.regZAcc !== null && d.regZAcc !== undefined ? d.regZAcc : '—' }}</span>
+                        <span v-if="d.regZAcc !== null && d.regZAcc !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.zAcceleration)">
+                          {{ getHintValue(getDeviceTelemetry(d.id)?.zAcceleration, 2) }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="text-mono">
+                      <div class="reg-cell-wrapper">
+                        <span class="reg-addr">{{ d.regXAcc !== null && d.regXAcc !== undefined ? d.regXAcc : '—' }}</span>
+                        <span v-if="d.regXAcc !== null && d.regXAcc !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.xAcceleration)">
+                          {{ getHintValue(getDeviceTelemetry(d.id)?.xAcceleration, 2) }}
+                        </span>
+                      </div>
+                    </td>
                     <td class="text-mono">{{ d.regDataType || '—' }}</td>
                     <td class="text-mono">{{ d.regByteOrder || '—' }}</td>
                     <td>
@@ -1446,6 +1511,16 @@ onUnmounted(() => {
   border-radius: 50%;
 }
 
+.mini-item.conn-ok .status-indicator {
+  background-color: var(--status-safe);
+  box-shadow: 0 0 6px var(--status-safe);
+}
+
+.mini-item.conn-err .status-indicator {
+  background-color: var(--status-critical);
+  box-shadow: 0 0 6px var(--status-critical);
+}
+
 .mini-item.safe .status-indicator {
   background-color: var(--status-safe);
   box-shadow: 0 0 6px var(--status-safe);
@@ -1674,7 +1749,7 @@ onUnmounted(() => {
 
 .devices-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   gap: 24px;
 }
 
@@ -2280,5 +2355,83 @@ onUnmounted(() => {
 .test-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.reg-cell-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.reg-addr {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.reg-hint {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 4px;
+  display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.hint-ok {
+  color: var(--accent-cyan);
+  background: rgba(0, 243, 255, 0.08);
+  border: 1px solid rgba(0, 243, 255, 0.15);
+}
+
+.hint-zero {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.15);
+}
+
+.hint-null {
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.offline-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 16px 0;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.offline-placeholder svg {
+  color: var(--status-critical);
+  margin-bottom: 8px;
+  opacity: 0.8;
+}
+
+.offline-placeholder p {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.offline-placeholder .last-update {
+  font-size: 0.75rem;
+  color: var(--accent-cyan);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.last-update-hint {
+  font-size: 0.68rem;
+  color: var(--accent-cyan);
+  margin-top: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  opacity: 0.85;
+  font-weight: 500;
+  letter-spacing: 0.2px;
 }
 </style>
