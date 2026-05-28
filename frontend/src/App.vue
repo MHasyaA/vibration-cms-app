@@ -14,7 +14,8 @@ import {
   DUMMY_ALARMS_ACTIVE, 
   DUMMY_ALARMS_HISTORY, 
   DUMMY_ANALYTICS_SUMMARY, 
-  generateDummyTrend 
+  generateDummyTrend,
+  DUMMY_MODBUS_CONNECTIONS
 } from './utils/dummyData';
 
 // --- State Router ---
@@ -255,6 +256,16 @@ function handleRangeChange(payload: { start?: string; end?: string }) {
 
 // --- Alarm Actions ---
 async function acknowledgeAlarm(alarmId: number) {
+  // Dummy mode: handle locally without API
+  if (isDummyMode.value) {
+    const alarm = activeAlarms.value.find((a: any) => a.id === alarmId);
+    if (alarm) {
+      activeAlarms.value = activeAlarms.value.filter((a: any) => a.id !== alarmId);
+      alarmHistory.value = [{ ...alarm, status: 'acknowledged' }, ...alarmHistory.value];
+      activeAlarmsCount.value = activeAlarms.value.length;
+    }
+    return;
+  }
   try {
     const res = await fetch(`/api/alarms/${alarmId}/acknowledge`, {
       method: 'PUT',
@@ -274,6 +285,21 @@ async function acknowledgeAlarm(alarmId: number) {
 
 // --- CRUD Device Actions ---
 async function handleSaveDevice(payload: any) {
+  // Dummy mode: simulate CRUD in local state
+  if (isDummyMode.value) {
+    if (selectedDeviceForEdit.value) {
+      // UPDATE
+      const idx = devicesList.value.findIndex((d: any) => d.id === selectedDeviceForEdit.value.id);
+      if (idx !== -1) devicesList.value[idx] = { ...devicesList.value[idx], ...payload };
+    } else {
+      // CREATE
+      const newId = Math.max(...devicesList.value.map((d: any) => d.id)) + 1;
+      devicesList.value = [...devicesList.value, { id: newId, slaveId: newId + 100, ...payload }];
+    }
+    showDeviceModal.value = false;
+    selectedDeviceForEdit.value = null;
+    return;
+  }
   try {
     let url = '/api/devices';
     let method = 'POST';
@@ -306,6 +332,14 @@ async function handleSaveDevice(payload: any) {
 async function handleDeleteDevice(deviceId: number) {
   if (!confirm('Apakah Anda yakin ingin menghapus perangkat sensor ini? Semua log data historis dan alarm terkait juga akan terhapus.')) return;
   
+  // Dummy mode: simulate delete in local state
+  if (isDummyMode.value) {
+    devicesList.value = devicesList.value.filter((d: any) => d.id !== deviceId);
+    if (selectedDeviceId.value === deviceId) {
+      selectedDeviceId.value = devicesList.value[0]?.id ?? null;
+    }
+    return;
+  }
   try {
     const res = await fetch(`/api/devices/${deviceId}`, {
       method: 'DELETE',
@@ -371,7 +405,8 @@ function getDeviceStatus(deviceId: number) {
 
 function isDeviceOnline(device: any): boolean {
   if (!device || !device.connectionId) return false;
-  const conn = modbusConnections.value.find((c: any) => c.id === device.connectionId);
+  const connections = isDummyMode.value ? DUMMY_MODBUS_CONNECTIONS : modbusConnections.value;
+  const conn = connections.find((c: any) => c.id === device.connectionId);
   return conn ? conn.isOnline : false;
 }
 
@@ -406,7 +441,7 @@ function updateClock() {
 // --- Modbus Connection Functions ---
 async function fetchModbusConnections() {
   if (isDummyMode.value) {
-    modbusConnections.value = [];
+    modbusConnections.value = DUMMY_MODBUS_CONNECTIONS;
     return;
   }
   try {
@@ -735,6 +770,12 @@ onUnmounted(() => {
           </button>
         </div>
       </header>
+
+      <!-- DEMO MODE BANNER -->
+      <div v-if="isDummyMode" class="demo-banner">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+        <span><strong>DEMO MODE AKTIF</strong> &mdash; Data simulasi, tidak terhubung ke perangkat nyata. Semua fitur dapat dieksplor secara penuh.</span>
+      </div>
 
       <!-- MAIN SCROLLABLE CONTENT AREA -->
       <main class="scada-main-content">
@@ -1429,8 +1470,9 @@ onUnmounted(() => {
 }
 
 .scada-sidebar .brand .company-logo {
-  height: 48px;
-  max-width: 100%;
+  width: 140px;
+  max-width: 90%;
+  height: auto;
   object-fit: contain;
   border-radius: 6px;
   flex-shrink: 0;
@@ -1778,6 +1820,31 @@ onUnmounted(() => {
 .theme-btn:hover {
   background: var(--bg-input-hover);
   color: var(--text-primary);
+}
+
+.dummy-active {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border-color: rgba(245, 158, 11, 0.5) !important;
+  color: #f59e0b !important;
+}
+
+.demo-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 32px;
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.10) 0%, rgba(245, 158, 11, 0.04) 100%);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.25);
+  color: #f59e0b;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  flex-shrink: 0;
+}
+
+.demo-banner strong {
+  font-weight: 800;
+  letter-spacing: 0.5px;
 }
 
 /* MAIN SCROLLABLE VIEWPORT */
