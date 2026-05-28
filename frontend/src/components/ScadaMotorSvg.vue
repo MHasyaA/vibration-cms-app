@@ -42,7 +42,6 @@ const shakeClass = computed(() => {
   return '';
 });
 
-
 const statusColor = computed(() => {
   if (status.value === 'critical') return 'var(--status-critical)';
   if (status.value === 'warning') return 'var(--status-warning)';
@@ -69,6 +68,15 @@ const tempColor = computed(() => {
         <!-- Ambient Glow from under the motor based on severity status -->
         <div class="glow-bg" :style="{ background: `radial-gradient(ellipse at center, ${statusColor} 0%, transparent 60%)`, opacity: 0.25 }"></div>
         
+        <!-- Smoke effect overlay — only visible when temperature is critical -->
+        <div v-if="tempStatus === 'critical' || tempStatus === 'warning'" class="smoke-container" :class="'smoke-' + tempStatus">
+          <div class="smoke-puff puff-1"></div>
+          <div class="smoke-puff puff-2"></div>
+          <div class="smoke-puff puff-3"></div>
+          <div class="smoke-puff puff-4"></div>
+          <div class="smoke-puff puff-5"></div>
+        </div>
+
         <img src="../assets/motor_3p.gif" class="motor-img" alt="Motor 3 Phase" />
       </div>
     </div>
@@ -165,6 +173,76 @@ const tempColor = computed(() => {
   pointer-events: none;
   z-index: 0;
   transition: background 0.3s ease;
+}
+
+/* ========================
+   SMOKE EFFECT
+======================== */
+.smoke-container {
+  position: absolute;
+  bottom: 55%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 120px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.smoke-puff {
+  position: absolute;
+  bottom: 0;
+  border-radius: 50%;
+  animation: rise-and-fade 3s ease-in infinite;
+  opacity: 0;
+}
+
+/* Smoke color and intensity by status */
+.smoke-critical .smoke-puff {
+  background: radial-gradient(circle, rgba(180, 180, 180, 0.85) 0%, rgba(120, 120, 120, 0) 70%);
+}
+.smoke-warning .smoke-puff {
+  background: radial-gradient(circle, rgba(200, 200, 200, 0.55) 0%, rgba(150, 150, 150, 0) 70%);
+}
+
+/* Each puff: different size, position, delay */
+.puff-1 {
+  width: 50px; height: 50px;
+  left: 30%;
+  animation-delay: 0s;
+  animation-duration: 3.2s;
+}
+.puff-2 {
+  width: 65px; height: 65px;
+  left: 50%;
+  animation-delay: 0.6s;
+  animation-duration: 2.8s;
+}
+.puff-3 {
+  width: 42px; height: 42px;
+  left: 20%;
+  animation-delay: 1.2s;
+  animation-duration: 3.5s;
+}
+.puff-4 {
+  width: 55px; height: 55px;
+  left: 60%;
+  animation-delay: 1.8s;
+  animation-duration: 2.6s;
+}
+.puff-5 {
+  width: 48px; height: 48px;
+  left: 40%;
+  animation-delay: 0.9s;
+  animation-duration: 3.8s;
+}
+
+@keyframes rise-and-fade {
+  0%   { transform: translateY(0)     scale(0.4); opacity: 0; }
+  15%  { opacity: 0.8; }
+  50%  { transform: translateY(-60px) scale(1.3); opacity: 0.5; }
+  80%  { transform: translateY(-100px) scale(1.8); opacity: 0.15; }
+  100% { transform: translateY(-130px) scale(2.2); opacity: 0; }
 }
 
 /* Shaking animations based on vibration level */
