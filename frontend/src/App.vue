@@ -580,10 +580,6 @@ onUnmounted(() => {
     <aside class="scada-sidebar">
       <div class="brand">
         <img :src="theme === 'dark' ? darkLogo : lightLogo" class="company-logo" alt="PT Logo" />
-        <div class="brand-text">
-          <h3 class="system-name">VIBRA-SENSE</h3>
-          <span class="client-name">PT. MAJU MUNDUR</span>
-        </div>
       </div>
       
       <nav class="nav-links">
@@ -659,14 +655,6 @@ onUnmounted(() => {
         </div>
       </div>
       
-      <div class="user-block">
-        <div class="user-info">
-          <span class="role-badge" :class="userRole">{{ userRole.toUpperCase() }}</span>
-          <span class="username">{{ username }}</span>
-        </div>
-        <button @click="handleLogout" class="btn-logout">LOGOUT</button>
-      </div>
-
       <div class="sidebar-contact">
         <h4 class="contact-title">PT. MAJU MUNDUR</h4>
         <div class="contact-details">
@@ -683,6 +671,14 @@ onUnmounted(() => {
             <span class="contact-text">Jl. Contoh Kawasan Industri No. 1, Kota</span>
           </p>
         </div>
+      </div>
+
+      <div class="user-block">
+        <div class="user-info">
+          <span class="role-badge" :class="userRole">{{ userRole.toUpperCase() }}</span>
+          <span class="username">{{ username }}</span>
+        </div>
+        <button @click="handleLogout" class="btn-logout">LOGOUT</button>
       </div>
     </aside>
 
@@ -1413,43 +1409,19 @@ onUnmounted(() => {
 
 .scada-sidebar .brand {
   height: var(--header-height);
-  padding: 0 20px;
+  padding: 0 16px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
   border-bottom: 1px solid var(--border-color);
 }
 
 .scada-sidebar .brand .company-logo {
-  height: 38px;
-  max-width: 50px;
+  height: 48px;
+  max-width: 100%;
   object-fit: contain;
-  border-radius: 4px;
+  border-radius: 6px;
   flex-shrink: 0;
-}
-
-.scada-sidebar .brand .brand-text {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.scada-sidebar .brand .system-name {
-  font-size: 0.95rem;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  color: var(--text-primary);
-  line-height: 1.1;
-  margin: 0;
-}
-
-.scada-sidebar .brand .client-name {
-  font-size: 0.65rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.2px;
-  margin-top: 2px;
 }
 
 .pulse-icon {
