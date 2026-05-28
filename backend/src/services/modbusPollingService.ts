@@ -46,8 +46,9 @@ export class ModbusPollingService {
 
     let ModbusRTU: any;
     try {
-      // Dynamic import - modbus-serial is optional; if not installed, polling is skipped
-      const mod = await import("modbus-serial");
+      // Dynamic import using a string variable to bypass static analysis errors
+      const modbusModuleName = "modbus-serial";
+      const mod = await import(modbusModuleName);
       ModbusRTU = mod.default;
     } catch {
       console.warn("[Modbus] 'modbus-serial' package not installed. Run 'bun add modbus-serial' to enable hardware polling.");
@@ -78,17 +79,14 @@ export class ModbusPollingService {
     const client = new ModbusRTU();
 
     try {
-      await client.connectRTUBuffered(connection.portName, {
-        baudRate: connection.baudRate,
-        dataBits: connection.dataBits,
-        stopBits: connection.stopBits,
-        parity: connection.parity,
+      await client.connectTCP(connection.ipAddress, {
+        port: connection.tcpPort,
       });
       client.setTimeout(connection.timeout);
       this.clients.set(connection.id, client);
-      console.log(`[Modbus] Connected to ${connection.portName} @ ${connection.baudRate} baud`);
+      console.log(`[Modbus] Connected to Modbus TCP @ ${connection.ipAddress}:${connection.tcpPort}`);
     } catch (err: any) {
-      console.error(`[Modbus] Failed to connect to ${connection.portName}:`, err.message);
+      console.error(`[Modbus] Failed to connect to Modbus TCP at ${connection.ipAddress}:${connection.tcpPort}:`, err.message);
       return; // Skip this connection, don't crash
     }
 
@@ -97,7 +95,7 @@ export class ModbusPollingService {
     }, connection.pollInterval);
 
     this.timers.set(connection.id, timer);
-    console.log(`[Modbus] Polling started for ${connection.portName} every ${connection.pollInterval}ms`);
+    console.log(`[Modbus] Polling started for Modbus TCP at ${connection.ipAddress}:${connection.tcpPort} every ${connection.pollInterval}ms`);
   }
 
   /**

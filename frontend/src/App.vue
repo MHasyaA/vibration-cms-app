@@ -466,7 +466,7 @@ async function saveDeviceModbusConfig(payload: any) {
 function getConnectionName(connectionId: number | null): string {
   if (!connectionId) return '—';
   const conn = modbusConnections.value.find((c: any) => c.id === connectionId);
-  return conn ? conn.portName : '—';
+  return conn ? `${conn.ipAddress}:${conn.tcpPort}` : '—';
 }
 
 // --- Polling Lifecycle ---
@@ -1046,15 +1046,15 @@ onUnmounted(() => {
         <!-- PAGE E: MODBUS CONFIG -->
         <section v-else-if="activePage === 'modbus-config'" class="page-sec flex-col modbus-config-page">
           
-          <!-- Section A: Serial Connections -->
+          <!-- Section A: TCP Connections -->
           <div class="glass-panel modbus-section">
             <div class="panel-header">
               <div class="title-meta">
-                <h3>Koneksi Serial RS485</h3>
-                <p class="subtitle">Kelola COM port yang digunakan untuk komunikasi Modbus RTU</p>
+                <h3>Koneksi Modbus TCP</h3>
+                <p class="subtitle">Kelola koneksi IP/TCP ke gateway / PLC Modbus TCP</p>
               </div>
               <button @click="selectedConnectionForEdit = null; showModbusModal = true" class="btn-add-device">
-                + Tambah Koneksi Serial
+                + Tambah Koneksi TCP
               </button>
             </div>
 
@@ -1063,8 +1063,8 @@ onUnmounted(() => {
               <div class="modbus-empty-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
               </div>
-              <p>Belum ada koneksi serial yang dikonfigurasi</p>
-              <span>Klik "Tambah Koneksi Serial" untuk memulai</span>
+              <p>Belum ada koneksi Modbus TCP yang dikonfigurasi</p>
+              <span>Klik "Tambah Koneksi TCP" untuk memulai</span>
             </div>
 
             <!-- Connection Cards -->
@@ -1073,11 +1073,10 @@ onUnmounted(() => {
                 <div class="conn-card-left">
                   <div class="conn-port-badge" :class="{ 'conn-active': conn.isActive }">
                     <span class="conn-status-dot" :class="{ 'active': conn.isActive }"></span>
-                    <span class="text-mono">{{ conn.portName }}</span>
+                    <span class="text-mono">{{ conn.ipAddress }}:{{ conn.tcpPort }}</span>
                   </div>
                   <div class="conn-meta">
-                    <span class="text-mono conn-settings">{{ conn.baudRate }} baud &bull; {{ conn.dataBits }}{{ conn.parity.charAt(0).toUpperCase() }}{{ conn.stopBits }}</span>
-                    <span class="conn-poll">Poll: {{ conn.pollInterval }}ms &bull; Timeout: {{ conn.timeout }}ms</span>
+                    <span class="conn-poll">Interval Polling: {{ conn.pollInterval }}ms &bull; Timeout: {{ conn.timeout }}ms</span>
                   </div>
                 </div>
                 <div class="conn-card-right">

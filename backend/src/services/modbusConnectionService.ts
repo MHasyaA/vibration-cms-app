@@ -27,24 +27,21 @@ export class ModbusConnectionService {
   }
 
   async createConnection(data: {
-    portName: string;
-    baudRate?: number;
-    dataBits?: number;
-    stopBits?: number;
-    parity?: string;
+    ipAddress: string;
+    tcpPort?: number;
     timeout?: number;
     pollInterval?: number;
     isActive?: boolean;
   }) {
-    // Check if portName is already taken
+    // Check if ipAddress is already taken
     const existing = await db
       .select()
       .from(modbusConnections)
-      .where(eq(modbusConnections.portName, data.portName))
+      .where(eq(modbusConnections.ipAddress, data.ipAddress))
       .limit(1);
 
     if (existing.length > 0) {
-      throw new Error(`Koneksi dengan port ${data.portName} sudah ada`);
+      throw new Error(`Koneksi dengan IP ${data.ipAddress} sudah ada`);
     }
 
     const [inserted] = await db
@@ -57,26 +54,23 @@ export class ModbusConnectionService {
   async updateConnection(
     id: number,
     data: {
-      portName?: string;
-      baudRate?: number;
-      dataBits?: number;
-      stopBits?: number;
-      parity?: string;
+      ipAddress?: string;
+      tcpPort?: number;
       timeout?: number;
       pollInterval?: number;
       isActive?: boolean;
     }
   ) {
-    // If portName is being changed, make sure it's not taken
-    if (data.portName !== undefined) {
-      const existing = await db
+    // If ipAddress is being changed, make sure it's not taken
+    if (data.ipAddress !== undefined) {
+      const [existingConn] = await db
         .select()
         .from(modbusConnections)
-        .where(eq(modbusConnections.portName, data.portName))
+        .where(eq(modbusConnections.ipAddress, data.ipAddress))
         .limit(1);
 
-      if (existing.length > 0 && existing[0].id !== id) {
-        throw new Error(`Port ${data.portName} sudah digunakan oleh koneksi lain`);
+      if (existingConn && existingConn.id !== id) {
+        throw new Error(`IP ${data.ipAddress} sudah digunakan oleh koneksi lain`);
       }
     }
 

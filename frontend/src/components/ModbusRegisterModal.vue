@@ -70,13 +70,13 @@ function handleSubmit() {
           
           <!-- Connection Selection -->
           <div class="form-section">
-            <h4>Koneksi Serial</h4>
+            <h4>Koneksi Modbus TCP</h4>
             <div class="form-group">
-              <label for="conn-select">Bus RS485 / COM Port</label>
+              <label for="conn-select">Pilih IP & Port Modbus TCP</label>
               <select id="conn-select" v-model="connectionId">
                 <option :value="null">— Belum dikonfigurasi —</option>
                 <option v-for="c in connections" :key="c.id" :value="c.id">
-                  {{ c.portName }} ({{ c.baudRate }} baud, {{ c.dataBits }}{{ c.parity.charAt(0).toUpperCase() }}{{ c.stopBits }})
+                  {{ c.ipAddress }}:{{ c.tcpPort }}
                   {{ c.isActive ? '● Aktif' : '○ Non-aktif' }}
                 </option>
               </select>

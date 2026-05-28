@@ -8,11 +8,8 @@ const props = defineProps<{
 
 const emit = defineEmits(['close', 'save']);
 
-const portName = ref('');
-const baudRate = ref(9600);
-const dataBits = ref(8);
-const stopBits = ref(1);
-const parity = ref('none');
+const ipAddress = ref('');
+const tcpPort = ref(502);
 const timeout = ref(1000);
 const pollInterval = ref(5000);
 const isActive = ref(false);
@@ -20,26 +17,18 @@ const isActive = ref(false);
 const error = ref<string | null>(null);
 const isEditMode = computed(() => !!props.connection);
 
-const BAUD_RATES = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200];
-
 watch(() => props.show, (newVal) => {
   if (newVal) {
     error.value = null;
     if (props.connection) {
-      portName.value = props.connection.portName;
-      baudRate.value = props.connection.baudRate;
-      dataBits.value = props.connection.dataBits;
-      stopBits.value = props.connection.stopBits;
-      parity.value = props.connection.parity;
+      ipAddress.value = props.connection.ipAddress;
+      tcpPort.value = props.connection.tcpPort;
       timeout.value = props.connection.timeout;
       pollInterval.value = props.connection.pollInterval;
       isActive.value = props.connection.isActive;
     } else {
-      portName.value = '';
-      baudRate.value = 9600;
-      dataBits.value = 8;
-      stopBits.value = 1;
-      parity.value = 'none';
+      ipAddress.value = '';
+      tcpPort.value = 502;
       timeout.value = 1000;
       pollInterval.value = 5000;
       isActive.value = false;
@@ -48,17 +37,14 @@ watch(() => props.show, (newVal) => {
 });
 
 function handleSubmit() {
-  if (!portName.value) {
-    error.value = 'Nama port wajib diisi (contoh: COM3 atau /dev/ttyUSB0)';
+  if (!ipAddress.value) {
+    error.value = 'IP Address / Hostname wajib diisi (contoh: 192.168.1.100 atau localhost)';
     return;
   }
 
   const payload = {
-    portName: portName.value.trim(),
-    baudRate: Number(baudRate.value),
-    dataBits: Number(dataBits.value),
-    stopBits: Number(stopBits.value),
-    parity: parity.value,
+    ipAddress: ipAddress.value.trim(),
+    tcpPort: Number(tcpPort.value),
     timeout: Number(timeout.value),
     pollInterval: Number(pollInterval.value),
     isActive: isActive.value,
@@ -72,7 +58,7 @@ function handleSubmit() {
   <div v-if="show" class="modal-backdrop" @click.self="emit('close')">
     <div class="modal-content glass-panel">
       <div class="modal-header">
-        <h3>{{ isEditMode ? 'Edit Koneksi Serial' : 'Tambah Koneksi Serial Baru' }}</h3>
+        <h3>{{ isEditMode ? 'Edit Koneksi Modbus TCP' : 'Tambah Koneksi Modbus TCP Baru' }}</h3>
         <button class="close-btn" @click="emit('close')">✕</button>
       </div>
 
@@ -80,51 +66,31 @@ function handleSubmit() {
         <div v-if="error" class="error-banner">⚠️ {{ error }}</div>
 
         <form @submit.prevent="handleSubmit" class="modal-form">
-          <!-- Port & Baud -->
+          <!-- IP & Port -->
           <div class="form-row">
             <div class="form-group">
-              <label for="port-name">Serial Port *</label>
+              <label for="ip-address">IP Address / Hostname *</label>
               <input
                 type="text"
-                id="port-name"
-                v-model="portName"
-                placeholder="COM3 / /dev/ttyUSB0"
+                id="ip-address"
+                v-model="ipAddress"
+                placeholder="contoh: 192.168.1.100 atau localhost"
                 required
                 :disabled="isEditMode"
               />
-              <span class="hint">Nama port RS485 pada sistem operasi</span>
+              <span class="hint">Alamat IP gateway atau device Modbus TCP</span>
             </div>
             <div class="form-group">
-              <label for="baud-rate">Baud Rate</label>
-              <select id="baud-rate" v-model="baudRate">
-                <option v-for="rate in BAUD_RATES" :key="rate" :value="rate">{{ rate }}</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Data Bits / Stop Bits / Parity -->
-          <div class="form-row three-col">
-            <div class="form-group">
-              <label for="data-bits">Data Bits</label>
-              <select id="data-bits" v-model="dataBits">
-                <option :value="7">7</option>
-                <option :value="8">8</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="stop-bits">Stop Bits</label>
-              <select id="stop-bits" v-model="stopBits">
-                <option :value="1">1</option>
-                <option :value="2">2</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="parity">Parity</label>
-              <select id="parity" v-model="parity">
-                <option value="none">None</option>
-                <option value="even">Even</option>
-                <option value="odd">Odd</option>
-              </select>
+              <label for="tcp-port">TCP Port *</label>
+              <input
+                type="number"
+                id="tcp-port"
+                v-model="tcpPort"
+                min="1"
+                max="65535"
+                required
+              />
+              <span class="hint">Port TCP standar Modbus adalah 502</span>
             </div>
           </div>
 
@@ -158,7 +124,7 @@ function handleSubmit() {
 
           <!-- Mode summary badge -->
           <div class="settings-badge text-mono">
-            {{ portName || 'PORT' }} &bull; {{ baudRate }} &bull; {{ dataBits }}{{ parity.charAt(0).toUpperCase() }}{{ stopBits }}
+            {{ ipAddress || 'IP_ADDRESS' }} : {{ tcpPort }}
           </div>
 
           <div class="modal-actions">

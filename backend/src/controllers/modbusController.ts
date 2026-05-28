@@ -38,11 +38,8 @@ export const modbusController = new Elysia({ prefix: "/modbus" })
     {
       beforeHandle: (c: any) => checkAdmin(c),
       body: t.Object({
-        portName: t.String({ minLength: 1 }),
-        baudRate: t.Optional(t.Integer({ minimum: 300 })),
-        dataBits: t.Optional(t.Integer({ minimum: 7, maximum: 8 })),
-        stopBits: t.Optional(t.Integer({ minimum: 1, maximum: 2 })),
-        parity: t.Optional(t.String()),
+        ipAddress: t.String({ minLength: 1 }),
+        tcpPort: t.Optional(t.Integer({ minimum: 1 })),
         timeout: t.Optional(t.Integer({ minimum: 100 })),
         pollInterval: t.Optional(t.Integer({ minimum: 500 })),
         isActive: t.Optional(t.Boolean()),
@@ -72,11 +69,8 @@ export const modbusController = new Elysia({ prefix: "/modbus" })
     {
       beforeHandle: (c: any) => checkAdmin(c),
       body: t.Object({
-        portName: t.Optional(t.String({ minLength: 1 })),
-        baudRate: t.Optional(t.Integer({ minimum: 300 })),
-        dataBits: t.Optional(t.Integer({ minimum: 7, maximum: 8 })),
-        stopBits: t.Optional(t.Integer({ minimum: 1, maximum: 2 })),
-        parity: t.Optional(t.String()),
+        ipAddress: t.Optional(t.String({ minLength: 1 })),
+        tcpPort: t.Optional(t.Integer({ minimum: 1 })),
         timeout: t.Optional(t.Integer({ minimum: 100 })),
         pollInterval: t.Optional(t.Integer({ minimum: 500 })),
         isActive: t.Optional(t.Boolean()),
@@ -124,11 +118,10 @@ export const modbusController = new Elysia({ prefix: "/modbus" })
         // Return config summary - actual port test requires hardware
         return {
           success: true,
-          message: `Konfigurasi untuk ${conn.portName} valid. Koneksi aktual memerlukan hardware RS485.`,
+          message: `Konfigurasi untuk ${conn.ipAddress}:${conn.tcpPort} valid. Koneksi aktual memerlukan gateway/device Modbus TCP.`,
           data: {
-            portName: conn.portName,
-            baudRate: conn.baudRate,
-            settings: `${conn.dataBits}${conn.parity.charAt(0).toUpperCase()}${conn.stopBits}`,
+            ipAddress: conn.ipAddress,
+            tcpPort: conn.tcpPort,
             pollInterval: conn.pollInterval,
             isActive: conn.isActive,
           },

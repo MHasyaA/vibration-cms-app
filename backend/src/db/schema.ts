@@ -26,11 +26,8 @@ export type NewUser = typeof users.$inferInsert;
 // One connection (one RS485 bus/COM port) can serve multiple devices (slaves)
 export const modbusConnections = pgTable("modbus_connections", {
   id: serial("id").primaryKey(),
-  portName: text("port_name").notNull().unique(), // e.g. "COM3", "/dev/ttyUSB0"
-  baudRate: integer("baud_rate").notNull().default(9600), // 9600, 19200, 38400, 115200
-  dataBits: integer("data_bits").notNull().default(8), // 7 or 8
-  stopBits: integer("stop_bits").notNull().default(1), // 1 or 2
-  parity: text("parity").notNull().default("none"), // 'none' | 'even' | 'odd'
+  ipAddress: text("ip_address").notNull().unique(), // e.g. "192.168.1.100"
+  tcpPort: integer("tcp_port").notNull().default(502),
   timeout: integer("timeout").notNull().default(1000), // ms
   pollInterval: integer("poll_interval").notNull().default(5000), // ms
   isActive: boolean("is_active").notNull().default(false),

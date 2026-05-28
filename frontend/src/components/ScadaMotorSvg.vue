@@ -42,13 +42,6 @@ const shakeClass = computed(() => {
   return '';
 });
 
-// Calculate rotation duration for fan shaft: higher vibration/speed = faster spin
-const fanSpinDuration = computed(() => {
-  const speed = maxVelocity.value;
-  if (speed === 0) return '0s';
-  const duration = Math.max(4 / (speed + 0.5), 0.15); // cap speed at 0.15s per rotation
-  return `${duration}s`;
-});
 
 const statusColor = computed(() => {
   if (status.value === 'critical') return 'var(--status-critical)';
