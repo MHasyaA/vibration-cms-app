@@ -76,7 +76,6 @@ function handleSubmit() {
                 v-model="ipAddress"
                 placeholder="contoh: 192.168.1.100 atau localhost"
                 required
-                :disabled="isEditMode"
               />
               <span class="hint">Alamat IP gateway atau device Modbus TCP</span>
             </div>

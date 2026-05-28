@@ -504,6 +504,15 @@ async function testModbusConnection(connId: number) {
 
 async function saveDeviceModbusConfig(payload: any) {
   if (!selectedDeviceForRegister.value) return;
+  if (isDummyMode.value) {
+    const idx = devicesList.value.findIndex((d: any) => d.id === selectedDeviceForRegister.value.id);
+    if (idx !== -1) {
+      devicesList.value[idx] = { ...devicesList.value[idx], ...payload };
+    }
+    showRegisterModal.value = false;
+    selectedDeviceForRegister.value = null;
+    return;
+  }
   try {
     const res = await fetch(`/api/devices/${selectedDeviceForRegister.value.id}`, {
       method: 'PUT',
@@ -579,7 +588,7 @@ onUnmounted(() => {
     <div class="login-box glass-panel">
       <div class="logo-area">
         <div class="scada-dot pulsing"></div>
-        <h2>VIBRA-SENSE <span class="accent-text">// SCADA CMS</span></h2>
+        <h2>VIBRATION<span class="accent-text">// SCADA CMS</span></h2>
       </div>
       <p class="login-sub">Condition Monitoring System - Industri 4.0</p>
       
@@ -1240,7 +1249,10 @@ onUnmounted(() => {
                     </td>
                     <td class="text-mono">
                       <div class="reg-cell-wrapper">
-                        <span class="reg-addr">{{ d.regTemp !== null && d.regTemp !== undefined ? d.regTemp : '—' }}</span>
+                        <span class="reg-addr">
+                          {{ d.regTemp !== null && d.regTemp !== undefined ? d.regTemp : '—' }}
+                          <span v-if="d.regTemp !== null && d.regTemp !== undefined && d.scaleTemp !== null && d.scaleTemp !== undefined && d.scaleTemp !== 1" class="reg-scale-hint">×{{ d.scaleTemp }}</span>
+                        </span>
                         <span v-if="d.regTemp !== null && d.regTemp !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.temperature)">
                           {{ getHintValue(getDeviceTelemetry(d.id)?.temperature, 1) }}
                         </span>
@@ -1248,7 +1260,10 @@ onUnmounted(() => {
                     </td>
                     <td class="text-mono">
                       <div class="reg-cell-wrapper">
-                        <span class="reg-addr">{{ d.regZVel !== null && d.regZVel !== undefined ? d.regZVel : '—' }}</span>
+                        <span class="reg-addr">
+                          {{ d.regZVel !== null && d.regZVel !== undefined ? d.regZVel : '—' }}
+                          <span v-if="d.regZVel !== null && d.regZVel !== undefined && d.scaleZVel !== null && d.scaleZVel !== undefined && d.scaleZVel !== 1" class="reg-scale-hint">×{{ d.scaleZVel }}</span>
+                        </span>
                         <span v-if="d.regZVel !== null && d.regZVel !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.zVelocity)">
                           {{ getHintValue(getDeviceTelemetry(d.id)?.zVelocity, 2) }}
                         </span>
@@ -1256,7 +1271,10 @@ onUnmounted(() => {
                     </td>
                     <td class="text-mono">
                       <div class="reg-cell-wrapper">
-                        <span class="reg-addr">{{ d.regXVel !== null && d.regXVel !== undefined ? d.regXVel : '—' }}</span>
+                        <span class="reg-addr">
+                          {{ d.regXVel !== null && d.regXVel !== undefined ? d.regXVel : '—' }}
+                          <span v-if="d.regXVel !== null && d.regXVel !== undefined && d.scaleXVel !== null && d.scaleXVel !== undefined && d.scaleXVel !== 1" class="reg-scale-hint">×{{ d.scaleXVel }}</span>
+                        </span>
                         <span v-if="d.regXVel !== null && d.regXVel !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.xVelocity)">
                           {{ getHintValue(getDeviceTelemetry(d.id)?.xVelocity, 2) }}
                         </span>
@@ -1264,7 +1282,10 @@ onUnmounted(() => {
                     </td>
                     <td class="text-mono">
                       <div class="reg-cell-wrapper">
-                        <span class="reg-addr">{{ d.regZAcc !== null && d.regZAcc !== undefined ? d.regZAcc : '—' }}</span>
+                        <span class="reg-addr">
+                          {{ d.regZAcc !== null && d.regZAcc !== undefined ? d.regZAcc : '—' }}
+                          <span v-if="d.regZAcc !== null && d.regZAcc !== undefined && d.scaleZAcc !== null && d.scaleZAcc !== undefined && d.scaleZAcc !== 1" class="reg-scale-hint">×{{ d.scaleZAcc }}</span>
+                        </span>
                         <span v-if="d.regZAcc !== null && d.regZAcc !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.zAcceleration)">
                           {{ getHintValue(getDeviceTelemetry(d.id)?.zAcceleration, 2) }}
                         </span>
@@ -1272,7 +1293,10 @@ onUnmounted(() => {
                     </td>
                     <td class="text-mono">
                       <div class="reg-cell-wrapper">
-                        <span class="reg-addr">{{ d.regXAcc !== null && d.regXAcc !== undefined ? d.regXAcc : '—' }}</span>
+                        <span class="reg-addr">
+                          {{ d.regXAcc !== null && d.regXAcc !== undefined ? d.regXAcc : '—' }}
+                          <span v-if="d.regXAcc !== null && d.regXAcc !== undefined && d.scaleXAcc !== null && d.scaleXAcc !== undefined && d.scaleXAcc !== 1" class="reg-scale-hint">×{{ d.scaleXAcc }}</span>
+                        </span>
                         <span v-if="d.regXAcc !== null && d.regXAcc !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.xAcceleration)">
                           {{ getHintValue(getDeviceTelemetry(d.id)?.xAcceleration, 2) }}
                         </span>
@@ -2518,6 +2542,19 @@ onUnmounted(() => {
 .reg-addr {
   font-size: 0.9rem;
   font-weight: 500;
+}
+
+.reg-scale-hint {
+  font-size: 0.7rem;
+  color: var(--accent-cyan);
+  background: rgba(0, 210, 255, 0.08);
+  padding: 1px 4px;
+  border-radius: 4px;
+  margin-left: 5px;
+  font-weight: 700;
+  border: 1px solid rgba(0, 210, 255, 0.15);
+  display: inline-block;
+  vertical-align: middle;
 }
 
 .reg-hint {

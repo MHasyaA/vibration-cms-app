@@ -34,6 +34,8 @@ export const modbusController = new Elysia({ prefix: "/modbus" })
     async ({ body, set }) => {
       try {
         const created = await modbusConnectionService.createConnection(body);
+        const { modbusPollingService } = await import("../services/modbusPollingService");
+        modbusPollingService.restartAll().catch((err) => console.error("[Modbus] Failed to restart polling:", err));
         set.status = 201;
         return { success: true, message: "Koneksi berhasil ditambahkan", data: created };
       } catch (error: any) {
@@ -64,6 +66,8 @@ export const modbusController = new Elysia({ prefix: "/modbus" })
           return { success: false, message: "ID tidak valid" };
         }
         const updated = await modbusConnectionService.updateConnection(connId, body);
+        const { modbusPollingService } = await import("../services/modbusPollingService");
+        modbusPollingService.restartAll().catch((err) => console.error("[Modbus] Failed to restart polling:", err));
         return { success: true, message: "Koneksi berhasil diperbarui", data: updated };
       } catch (error: any) {
         if (error.message.includes("tidak ditemukan")) set.status = 404;
@@ -95,6 +99,8 @@ export const modbusController = new Elysia({ prefix: "/modbus" })
           return { success: false, message: "ID tidak valid" };
         }
         const deleted = await modbusConnectionService.deleteConnection(connId);
+        const { modbusPollingService } = await import("../services/modbusPollingService");
+        modbusPollingService.restartAll().catch((err) => console.error("[Modbus] Failed to restart polling:", err));
         return { success: true, message: "Koneksi berhasil dihapus", data: deleted };
       } catch (error: any) {
         set.status = error.message.includes("tidak ditemukan") ? 404 : 500;
@@ -135,7 +141,34 @@ export const modbusController = new Elysia({ prefix: "/modbus" })
         const client = new ModbusRTU();
         try {
           client.setTimeout(2000);
-          await client.connectTCP(conn.ipAddress, { port: conn.tcpPort });
+          
+          await new Promise<void>((resolve, reject) => {
+            let timer = setTimeout(() => {
+              timer = null as any;
+              try {
+                if (client._port && client._port._client && typeof client._port._client.destroy === "function") {
+                  client._port._client.destroy();
+                } else if (client._client && typeof client._client.destroy === "function") {
+                  client._client.destroy();
+                }
+              } catch {}
+              reject(new Error("TCP Connection Timed Out"));
+            }, 2000);
+
+            client.connectTCP(conn.ipAddress, { port: conn.tcpPort })
+              .then(() => {
+                if (timer) {
+                  clearTimeout(timer);
+                  resolve();
+                }
+              })
+              .catch((err: any) => {
+                if (timer) {
+                  clearTimeout(timer);
+                  reject(err);
+                }
+              });
+          });
 
           const devices = await modbusConnectionService.getDevicesByConnectionId(connId);
           let readVal: number | null = null;
@@ -171,6 +204,21 @@ export const modbusController = new Elysia({ prefix: "/modbus" })
                 } else {
                   readVal = byteOrder === "BE" ? buf.readInt16BE(0) : buf.readInt16LE(0);
                 }
+
+                // Apply the scaling factor based on the tested register parameter
+                let scaleFactor = 1.0;
+                if (regAddr === activeDev.regTemp) {
+                  scaleFactor = activeDev.scaleTemp ?? 1.0;
+                } else if (regAddr === activeDev.regZVel) {
+                  scaleFactor = activeDev.scaleZVel ?? 1.0;
+                } else if (regAddr === activeDev.regXVel) {
+                  scaleFactor = activeDev.scaleXVel ?? 1.0;
+                } else if (regAddr === activeDev.regZAcc) {
+                  scaleFactor = activeDev.scaleZAcc ?? 1.0;
+                } else if (regAddr === activeDev.regXAcc) {
+                  scaleFactor = activeDev.scaleXAcc ?? 1.0;
+                }
+                readVal = readVal * scaleFactor;
 
                 if (readVal === 0) {
                   testMessage = `Terhubung ke ${conn.ipAddress}:${conn.tcpPort} (Slave #${activeDev.slaveId}). Data register ${regAddr} bernilai 0 (Pastikan register terisi data).`;
