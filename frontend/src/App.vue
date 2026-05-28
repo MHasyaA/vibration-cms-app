@@ -4,6 +4,8 @@ import MetricCard from './components/MetricCard.vue';
 import ScadaMotorSvg from './components/ScadaMotorSvg.vue';
 import TrendLineChart from './components/TrendLineChart.vue';
 import DeviceModal from './components/DeviceModal.vue';
+import ModbusConfigModal from './components/ModbusConfigModal.vue';
+import ModbusRegisterModal from './components/ModbusRegisterModal.vue';
 import { 
   DUMMY_DEVICES, 
   generateDummyTelemetries, 
@@ -14,7 +16,7 @@ import {
 } from './utils/dummyData';
 
 // --- State Router ---
-const activePage = ref<'login' | 'overview' | 'detail' | 'alarms' | 'devices'>('login');
+const activePage = ref<'login' | 'overview' | 'detail' | 'alarms' | 'devices' | 'modbus-config'>('login');
 const theme = ref<'dark' | 'light'>('dark');
 const isDummyMode = ref(false);
 
@@ -46,6 +48,14 @@ const trendEnd = ref<string | undefined>(undefined);
 // --- Modals State ---
 const showDeviceModal = ref(false);
 const selectedDeviceForEdit = ref<any | null>(null);
+
+// --- Modbus Config State ---
+const modbusConnections = ref<any[]>([]);
+const showModbusModal = ref(false);
+const selectedConnectionForEdit = ref<any | null>(null);
+const showRegisterModal = ref(false);
+const selectedDeviceForRegister = ref<any | null>(null);
+const modbusTestResult = ref<Record<number, { loading: boolean; message: string; ok: boolean }>>({});
 
 // --- Polling Interval ---
 let pollInterval: any = null;
@@ -143,7 +153,8 @@ async function loadAllData() {
       fetchDevices(),
       fetchRealtimeTelemetries(),
       fetchAlarms(),
-      fetchAnalyticsSummary()
+      fetchAnalyticsSummary(),
+      fetchModbusConnections()
     ]);
     
     // Set first device as default selected in detail view if none selected
@@ -341,7 +352,7 @@ function getDeviceStatus(deviceId: number) {
   const tel = getDeviceTelemetry(deviceId);
   const dev = devicesList.value.find(d => d.id === deviceId);
   
-  if (!tel || !dev) return 'unknown';
+  if (!tel || !dev || tel.temperature === null || tel.zVelocity === null) return 'unknown';
   
   const tempLimit = dev.setpointTemp || 70;
   const zVelLimit = dev.setpointZVel || 7.1;
@@ -356,10 +367,29 @@ function getDeviceStatus(deviceId: number) {
   return 'safe';
 }
 
+function isDeviceOnline(device: any): boolean {
+  if (!device || !device.connectionId) return false;
+  const conn = modbusConnections.value.find((c: any) => c.id === device.connectionId);
+  return conn ? conn.isOnline : false;
+}
+
+function getHintValue(val: any, decimals = 1) {
+  if (val === undefined || val === null || isNaN(Number(val))) return 'N/A';
+  return Number(val).toFixed(decimals);
+}
+
+function getHintClass(val: any) {
+  if (val === undefined || val === null || isNaN(Number(val))) return 'hint-null';
+  if (Number(val) === 0) return 'hint-zero';
+  return 'hint-ok';
+}
+
 function formatDate(isoString: string) {
   if (!isoString) return '--/--/----';
   const d = new Date(isoString);
-  return d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  // Tambah 7 jam (7 * 60 * 60 * 1000 ms) untuk Waktu Indonesia Barat (WIB)
+  const wibDate = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+  return wibDate.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + wibDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 }
 
 // --- Live Clock ---
@@ -367,6 +397,95 @@ const currentTime = ref('');
 function updateClock() {
   const now = new Date();
   currentTime.value = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+// --- Modbus Connection Functions ---
+async function fetchModbusConnections() {
+  if (isDummyMode.value) {
+    modbusConnections.value = [];
+    return;
+  }
+  try {
+    const res = await fetch('/api/modbus/connections', { headers: getHeaders() });
+    const result = await res.json();
+    if (result.success) modbusConnections.value = result.data;
+  } catch { /* silently fail */ }
+}
+
+async function saveModbusConnection(payload: any) {
+  try {
+    let url = '/api/modbus/connections';
+    let method = 'POST';
+    if (selectedConnectionForEdit.value) {
+      url = `/api/modbus/connections/${selectedConnectionForEdit.value.id}`;
+      method = 'PUT';
+    }
+    const res = await fetch(url, { method, headers: getHeaders(), body: JSON.stringify(payload) });
+    const result = await res.json();
+    if (result.success) {
+      showModbusModal.value = false;
+      selectedConnectionForEdit.value = null;
+      await fetchModbusConnections();
+    } else {
+      alert(`Gagal menyimpan: ${result.message}`);
+    }
+  } catch (err) {
+    alert('Terjadi kesalahan koneksi');
+  }
+}
+
+async function deleteModbusConnection(connId: number) {
+  if (!confirm('Hapus koneksi ini? Device yang terhubung akan ter-disconnect dari koneksi ini.')) return;
+  try {
+    const res = await fetch(`/api/modbus/connections/${connId}`, { method: 'DELETE', headers: getHeaders() });
+    const result = await res.json();
+    if (result.success) {
+      await fetchModbusConnections();
+      await fetchDevices(); // Refresh devices since connectionId may have changed
+    } else {
+      alert(`Gagal menghapus: ${result.message}`);
+    }
+  } catch { alert('Terjadi kesalahan koneksi'); }
+}
+
+async function testModbusConnection(connId: number) {
+  modbusTestResult.value[connId] = { loading: true, message: '', ok: false };
+  try {
+    const res = await fetch(`/api/modbus/connections/${connId}/test`, { headers: getHeaders() });
+    const result = await res.json();
+    modbusTestResult.value[connId] = {
+      loading: false,
+      message: result.message,
+      ok: result.success,
+    };
+  } catch {
+    modbusTestResult.value[connId] = { loading: false, message: 'Koneksi ke backend gagal', ok: false };
+  }
+}
+
+async function saveDeviceModbusConfig(payload: any) {
+  if (!selectedDeviceForRegister.value) return;
+  try {
+    const res = await fetch(`/api/devices/${selectedDeviceForRegister.value.id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    const result = await res.json();
+    if (result.success) {
+      showRegisterModal.value = false;
+      selectedDeviceForRegister.value = null;
+      await fetchDevices();
+    } else {
+      alert(`Gagal menyimpan: ${result.message}`);
+    }
+  } catch { alert('Terjadi kesalahan koneksi'); }
+}
+
+function getConnectionName(connectionId: number | null): string {
+  if (!connectionId) return '—';
+  const conn = modbusConnections.value.find((c: any) => c.id === connectionId);
+  return conn ? `${conn.ipAddress}:${conn.tcpPort}` : '—';
 }
 
 // --- Polling Lifecycle ---
@@ -378,6 +497,7 @@ function startPolling() {
     await fetchRealtimeTelemetries();
     await fetchAlarms();
     await fetchAnalyticsSummary();
+    await fetchModbusConnections();
     if (selectedDeviceId.value !== null && activePage.value === 'detail') {
       await fetchHistoricalTrend(selectedDeviceId.value);
     }
@@ -496,6 +616,15 @@ onUnmounted(() => {
         >
           <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg></span> Device Manager
         </button>
+
+        <button
+          v-if="userRole === 'admin'"
+          @click="activePage = 'modbus-config'; fetchModbusConnections()"
+          class="nav-btn"
+          :class="{ active: activePage === 'modbus-config' }"
+        >
+          <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg></span> Modbus Config
+        </button>
       </nav>
       
       <!-- Connected Devices Sublist -->
@@ -507,7 +636,11 @@ onUnmounted(() => {
             :key="d.id"
             @click="selectDevice(d.id)"
             class="mini-item"
-            :class="{ active: selectedDeviceId === d.id && activePage === 'detail', [getDeviceStatus(d.id)]: true }"
+            :class="{ 
+              active: selectedDeviceId === d.id && activePage === 'detail', 
+              'conn-ok': isDeviceOnline(d), 
+              'conn-err': !isDeviceOnline(d) 
+            }"
           >
             <span class="status-indicator"></span>
             <div class="meta">
@@ -515,7 +648,7 @@ onUnmounted(() => {
               <span class="loc">{{ d.lokasi }}</span>
             </div>
             <span class="mini-val text-mono" v-if="getDeviceTelemetry(d.id)">
-              {{ Math.max(getDeviceTelemetry(d.id).zVelocity, getDeviceTelemetry(d.id).xVelocity).toFixed(1) }}
+              {{ (Math.max(getDeviceTelemetry(d.id)?.zVelocity || 0, getDeviceTelemetry(d.id)?.xVelocity || 0)).toFixed(1) }}
             </span>
           </div>
         </div>
@@ -675,29 +808,34 @@ onUnmounted(() => {
                   <h3>{{ d.namaSensor }}</h3>
                   <span class="loc">{{ d.lokasi }}</span>
                 </div>
-                <span class="status-text">{{ getDeviceStatus(d.id).toUpperCase() }}</span>
+                <div class="status-wrapper" style="text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
+                  <span class="status-text">{{ getDeviceStatus(d.id).toUpperCase() }}</span>
+                  <div class="last-update-hint" v-if="getDeviceStatus(d.id) === 'unknown' && getDeviceTelemetry(d.id)?.timestamp">
+                    Last Update: {{ formatDate(getDeviceTelemetry(d.id).timestamp) }}
+                  </div>
+                </div>
               </div>
               
               <div class="telemetry-block" v-if="getDeviceTelemetry(d.id)">
                 <div class="tel-col temp">
                   <span class="label">TEMP</span>
-                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).temperature.toFixed(1) }} <span class="u">°C</span></span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).temperature?.toFixed(1) ?? '--' }} <span class="u">°C</span></span>
                 </div>
                 <div class="tel-col vibz">
                   <span class="label">VIB Z</span>
-                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).zVelocity.toFixed(2) }} <span class="u">mm/s</span></span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).zVelocity?.toFixed(2) ?? '--' }} <span class="u">mm/s</span></span>
                 </div>
                 <div class="tel-col accz">
                   <span class="label">ACC Z</span>
-                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).zAcceleration.toFixed(2) }} <span class="u">mm/s²</span></span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).zAcceleration?.toFixed(2) ?? '--' }} <span class="u">mm/s²</span></span>
                 </div>
                 <div class="tel-col vibx">
                   <span class="label">VIB X</span>
-                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).xVelocity.toFixed(2) }} <span class="u">mm/s</span></span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).xVelocity?.toFixed(2) ?? '--' }} <span class="u">mm/s</span></span>
                 </div>
                 <div class="tel-col accx">
                   <span class="label">ACC X</span>
-                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).xAcceleration.toFixed(2) }} <span class="u">mm/s²</span></span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).xAcceleration?.toFixed(2) ?? '--' }} <span class="u">mm/s²</span></span>
                 </div>
               </div>
               <div class="telemetry-block empty-block" v-else>
@@ -881,7 +1019,7 @@ onUnmounted(() => {
           <div class="glass-panel table-panel full-width">
             <div class="panel-header">
               <div class="title-meta">
-                <h3>💻 Manajemen Objek Sensor (Modbus RTU)</h3>
+                <h3>Manajemen Objek Sensor (Modbus RTU)</h3>
                 <p class="subtitle">Daftarkan dan konfigurasikan setpoint alarm pada perangkat RS485</p>
               </div>
               <button 
@@ -934,6 +1072,153 @@ onUnmounted(() => {
           </div>
         </section>
 
+        <!-- PAGE E: MODBUS CONFIG -->
+        <section v-else-if="activePage === 'modbus-config'" class="page-sec flex-col modbus-config-page">
+          
+          <!-- Section A: TCP Connections -->
+          <div class="glass-panel modbus-section">
+            <div class="panel-header">
+              <div class="title-meta">
+                <h3>Koneksi Modbus TCP</h3>
+                <p class="subtitle">Kelola koneksi IP/TCP ke gateway / PLC Modbus TCP</p>
+              </div>
+              <button @click="selectedConnectionForEdit = null; showModbusModal = true" class="btn-add-device">
+                + Tambah Koneksi TCP
+              </button>
+            </div>
+
+            <!-- Empty state -->
+            <div v-if="modbusConnections.length === 0" class="modbus-empty">
+              <div class="modbus-empty-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+              </div>
+              <p>Belum ada koneksi Modbus TCP yang dikonfigurasi</p>
+              <span>Klik "Tambah Koneksi TCP" untuk memulai</span>
+            </div>
+
+            <!-- Connection Cards -->
+            <div v-else class="conn-card-list">
+              <div v-for="conn in modbusConnections" :key="conn.id" class="conn-card glass-panel">
+                <div class="conn-card-left">
+                  <div class="conn-port-badge" :class="{ 'conn-active': conn.isOnline }">
+                    <span class="conn-status-dot" :class="{ 'active': conn.isOnline }"></span>
+                    <span class="text-mono">{{ conn.ipAddress }}:{{ conn.tcpPort }}</span>
+                  </div>
+                  <div class="conn-meta">
+                    <span class="conn-poll">Interval Polling: {{ conn.pollInterval }}ms &bull; Timeout: {{ conn.timeout }}ms</span>
+                  </div>
+                </div>
+                <div class="conn-card-right">
+                  <span v-if="conn.isOnline" class="badge-active" style="background: rgba(16, 185, 129, 0.1); color: var(--status-safe); border: 1px solid rgba(16, 185, 129, 0.2);">ONLINE</span>
+                  <span v-else-if="conn.isActive" class="badge-inactive" style="background: rgba(239, 68, 68, 0.1); color: var(--status-critical); border: 1px solid rgba(239, 68, 68, 0.2);">OFFLINE</span>
+                  <span v-else class="badge-inactive">NON-AKTIF</span>
+
+                  <!-- Test result -->
+                  <div v-if="modbusTestResult[conn.id]" class="test-result" :class="{ 'ok': modbusTestResult[conn.id].ok, 'fail': !modbusTestResult[conn.id].ok && !modbusTestResult[conn.id].loading }">
+                    <span v-if="modbusTestResult[conn.id].loading">Menguji...</span>
+                    <span v-else>{{ modbusTestResult[conn.id].ok ? '✓' : '✗' }} {{ modbusTestResult[conn.id].message }}</span>
+                  </div>
+
+                  <div class="action-btns">
+                    <button @click="testModbusConnection(conn.id)" class="test-btn" :disabled="modbusTestResult[conn.id]?.loading">TEST</button>
+                    <button @click="selectedConnectionForEdit = conn; showModbusModal = true" class="edit-btn">EDIT</button>
+                    <button @click="deleteModbusConnection(conn.id)" class="del-btn">HAPUS</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section B: Register Address Mapping -->
+          <div class="glass-panel modbus-section">
+            <div class="panel-header">
+              <div class="title-meta">
+                <h3>Mapping Register Address per Device</h3>
+                <p class="subtitle">Set alamat holding register Modbus untuk setiap parameter sensor</p>
+              </div>
+            </div>
+
+            <div class="table-wrapper">
+              <table class="scada-table">
+                <thead>
+                  <tr>
+                    <th>Slave ID</th>
+                    <th>Nama Sensor</th>
+                    <th>Koneksi</th>
+                    <th>Reg. Temp</th>
+                    <th>Reg. Vel-Z</th>
+                    <th>Reg. Vel-X</th>
+                    <th>Reg. Acc-Z</th>
+                    <th>Reg. Acc-X</th>
+                    <th>Data Type</th>
+                    <th>Byte Order</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="devicesList.length === 0">
+                    <td colspan="11" class="empty-row">Belum ada perangkat terdaftar. Tambahkan device di Device Manager terlebih dahulu.</td>
+                  </tr>
+                  <tr v-for="d in devicesList" :key="d.id">
+                    <td class="text-mono text-gradient">#{{ d.slaveId }}</td>
+                    <td><strong>{{ d.namaSensor }}</strong></td>
+                    <td>
+                      <span v-if="d.connectionId" class="text-mono" style="color: var(--accent-primary);">{{ getConnectionName(d.connectionId) }}</span>
+                      <span v-else class="badge-unconfigured">belum dikonfigurasi</span>
+                    </td>
+                    <td class="text-mono">
+                      <div class="reg-cell-wrapper">
+                        <span class="reg-addr">{{ d.regTemp !== null && d.regTemp !== undefined ? d.regTemp : '—' }}</span>
+                        <span v-if="d.regTemp !== null && d.regTemp !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.temperature)">
+                          {{ getHintValue(getDeviceTelemetry(d.id)?.temperature, 1) }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="text-mono">
+                      <div class="reg-cell-wrapper">
+                        <span class="reg-addr">{{ d.regZVel !== null && d.regZVel !== undefined ? d.regZVel : '—' }}</span>
+                        <span v-if="d.regZVel !== null && d.regZVel !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.zVelocity)">
+                          {{ getHintValue(getDeviceTelemetry(d.id)?.zVelocity, 2) }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="text-mono">
+                      <div class="reg-cell-wrapper">
+                        <span class="reg-addr">{{ d.regXVel !== null && d.regXVel !== undefined ? d.regXVel : '—' }}</span>
+                        <span v-if="d.regXVel !== null && d.regXVel !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.xVelocity)">
+                          {{ getHintValue(getDeviceTelemetry(d.id)?.xVelocity, 2) }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="text-mono">
+                      <div class="reg-cell-wrapper">
+                        <span class="reg-addr">{{ d.regZAcc !== null && d.regZAcc !== undefined ? d.regZAcc : '—' }}</span>
+                        <span v-if="d.regZAcc !== null && d.regZAcc !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.zAcceleration)">
+                          {{ getHintValue(getDeviceTelemetry(d.id)?.zAcceleration, 2) }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="text-mono">
+                      <div class="reg-cell-wrapper">
+                        <span class="reg-addr">{{ d.regXAcc !== null && d.regXAcc !== undefined ? d.regXAcc : '—' }}</span>
+                        <span v-if="d.regXAcc !== null && d.regXAcc !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.xAcceleration)">
+                          {{ getHintValue(getDeviceTelemetry(d.id)?.xAcceleration, 2) }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="text-mono">{{ d.regDataType || '—' }}</td>
+                    <td class="text-mono">{{ d.regByteOrder || '—' }}</td>
+                    <td>
+                      <button @click="selectedDeviceForRegister = d; showRegisterModal = true" class="edit-btn">KONFIGURASI</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </section>
+
       </main>
     </div>
   </div>
@@ -944,6 +1229,23 @@ onUnmounted(() => {
     :device="selectedDeviceForEdit"
     @close="showDeviceModal = false"
     @save="handleSaveDevice"
+  />
+
+  <!-- Modbus Connection Modal -->
+  <ModbusConfigModal
+    :show="showModbusModal"
+    :connection="selectedConnectionForEdit"
+    @close="showModbusModal = false; selectedConnectionForEdit = null"
+    @save="saveModbusConnection"
+  />
+
+  <!-- Modbus Register Address Modal -->
+  <ModbusRegisterModal
+    :show="showRegisterModal"
+    :device="selectedDeviceForRegister"
+    :connections="modbusConnections"
+    @close="showRegisterModal = false; selectedDeviceForRegister = null"
+    @save="saveDeviceModbusConfig"
   />
 </template>
 
@@ -1209,6 +1511,16 @@ onUnmounted(() => {
   border-radius: 50%;
 }
 
+.mini-item.conn-ok .status-indicator {
+  background-color: var(--status-safe);
+  box-shadow: 0 0 6px var(--status-safe);
+}
+
+.mini-item.conn-err .status-indicator {
+  background-color: var(--status-critical);
+  box-shadow: 0 0 6px var(--status-critical);
+}
+
 .mini-item.safe .status-indicator {
   background-color: var(--status-safe);
   box-shadow: 0 0 6px var(--status-safe);
@@ -1437,7 +1749,7 @@ onUnmounted(() => {
 
 .devices-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   gap: 24px;
 }
 
@@ -1848,5 +2160,278 @@ onUnmounted(() => {
 
 .del-btn:hover {
   background: var(--status-critical-glow);
+}
+
+/* ========================
+   MODBUS CONFIG PAGE STYLES
+   ======================== */
+.modbus-config-page {
+  gap: 20px;
+}
+
+.modbus-section {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Empty state */
+.modbus-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px;
+  color: var(--text-secondary);
+}
+
+.modbus-empty-icon {
+  color: var(--text-muted);
+  opacity: 0.4;
+  margin-bottom: 8px;
+}
+
+.modbus-empty p { font-weight: 600; font-size: 0.95rem; }
+.modbus-empty span { font-size: 0.8rem; color: var(--text-muted); }
+
+/* Connection Cards */
+.conn-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.conn-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-radius: 12px;
+  gap: 16px;
+  transition: border-color 0.2s;
+}
+
+.conn-card.conn-active-card { border-color: rgba(0, 210, 255, 0.3); }
+
+.conn-card-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+}
+
+.conn-port-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  min-width: 100px;
+}
+
+.conn-port-badge.conn-active {
+  border-color: rgba(0, 210, 255, 0.35);
+  background: rgba(0, 210, 255, 0.06);
+}
+
+.conn-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.conn-status-dot.active {
+  background: var(--status-safe);
+  box-shadow: 0 0 8px var(--status-safe);
+  animation: pulse-soft 2s infinite;
+}
+
+.conn-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.conn-settings {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.conn-poll {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.conn-card-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.badge-active {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: var(--status-safe);
+}
+
+.badge-inactive {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: var(--text-muted);
+}
+
+.badge-unconfigured {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: var(--status-warning);
+  font-style: italic;
+}
+
+.test-result {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  max-width: 280px;
+  text-align: right;
+  line-height: 1.4;
+}
+
+.test-result.ok {
+  color: var(--status-safe);
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.test-result.fail {
+  color: var(--status-critical);
+  background: var(--status-critical-glow);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.test-btn {
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid rgba(0, 210, 255, 0.25);
+  background: rgba(0, 210, 255, 0.08);
+  color: var(--accent-primary);
+  transition: all 0.15s;
+}
+
+.test-btn:hover:not(:disabled) {
+  background: rgba(0, 210, 255, 0.15);
+  border-color: rgba(0, 210, 255, 0.5);
+}
+
+.test-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.reg-cell-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.reg-addr {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.reg-hint {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 4px;
+  display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.hint-ok {
+  color: var(--accent-cyan);
+  background: rgba(0, 243, 255, 0.08);
+  border: 1px solid rgba(0, 243, 255, 0.15);
+}
+
+.hint-zero {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.15);
+}
+
+.hint-null {
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.offline-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 16px 0;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.offline-placeholder svg {
+  color: var(--status-critical);
+  margin-bottom: 8px;
+  opacity: 0.8;
+}
+
+.offline-placeholder p {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.offline-placeholder .last-update {
+  font-size: 0.75rem;
+  color: var(--accent-cyan);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.last-update-hint {
+  font-size: 0.68rem;
+  color: var(--accent-cyan);
+  margin-top: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  opacity: 0.85;
+  font-weight: 500;
+  letter-spacing: 0.2px;
 }
 </style>

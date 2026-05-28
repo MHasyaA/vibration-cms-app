@@ -93,7 +93,7 @@ async function handleSubmit() {
             <div class="form-section">
               <h4>Informasi Dasar Perangkat</h4>
               <div class="form-group">
-                <label for="slave-id">Modbus Slave ID *</label>
+                <label for="slave-id">Sensor Slave ID *</label>
                 <input 
                   type="number" 
                   id="slave-id" 

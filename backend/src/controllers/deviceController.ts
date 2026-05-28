@@ -62,6 +62,15 @@ export const deviceController = new Elysia({ prefix: "/devices" })
         setpointXVel: t.Optional(t.Number()),
         setpointZAcc: t.Optional(t.Number()),
         setpointXAcc: t.Optional(t.Number()),
+        // Phase #4: Modbus config
+        connectionId: t.Optional(t.Nullable(t.Integer())),
+        regTemp: t.Optional(t.Nullable(t.Integer({ minimum: 0 }))),
+        regZVel: t.Optional(t.Nullable(t.Integer({ minimum: 0 }))),
+        regXVel: t.Optional(t.Nullable(t.Integer({ minimum: 0 }))),
+        regZAcc: t.Optional(t.Nullable(t.Integer({ minimum: 0 }))),
+        regXAcc: t.Optional(t.Nullable(t.Integer({ minimum: 0 }))),
+        regDataType: t.Optional(t.String()),
+        regByteOrder: t.Optional(t.String()),
       }),
     }
   )
@@ -108,6 +117,15 @@ export const deviceController = new Elysia({ prefix: "/devices" })
         setpointXVel: t.Optional(t.Number()),
         setpointZAcc: t.Optional(t.Number()),
         setpointXAcc: t.Optional(t.Number()),
+        // Phase #4: Modbus config
+        connectionId: t.Optional(t.Nullable(t.Integer())),
+        regTemp: t.Optional(t.Nullable(t.Integer({ minimum: 0 }))),
+        regZVel: t.Optional(t.Nullable(t.Integer({ minimum: 0 }))),
+        regXVel: t.Optional(t.Nullable(t.Integer({ minimum: 0 }))),
+        regZAcc: t.Optional(t.Nullable(t.Integer({ minimum: 0 }))),
+        regXAcc: t.Optional(t.Nullable(t.Integer({ minimum: 0 }))),
+        regDataType: t.Optional(t.Nullable(t.String())),
+        regByteOrder: t.Optional(t.Nullable(t.String())),
       }),
     }
   )
