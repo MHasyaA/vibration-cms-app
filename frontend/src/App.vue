@@ -701,7 +701,11 @@ onUnmounted(() => {
             <span class="green-dot animate-ping"></span> Live Polling OK (3s)
           </span>
         </div>
-        
+
+        <div class="header-center">
+          <h1 class="system-main-title">Vibration Condition Monitoring Dashboard</h1>
+        </div>
+
         <div class="header-right">
           <!-- Digital Clock -->
           <div class="clock-display text-mono">{{ currentTime }}</div>
