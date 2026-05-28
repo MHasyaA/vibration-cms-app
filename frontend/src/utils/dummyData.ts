@@ -245,7 +245,6 @@ export const generateDummyTrend = (deviceId: number, start?: string, end?: strin
 
   // Spike zone: titik 40–60 dari 120 (sepertiga tengah grafik)
   const spikeStart = Math.floor(points * 0.38);
-  const spikePeak  = Math.floor(points * 0.50);
   const spikeEnd   = Math.floor(points * 0.62);
 
   for (let i = 0; i < points; i++) {

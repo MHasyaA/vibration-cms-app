@@ -58,6 +58,11 @@ export const devices = pgTable("devices", {
   regXAcc: integer("reg_x_acc"), // Register address for X-Acceleration
   regDataType: text("reg_data_type").default("float32"), // 'int16' | 'uint16' | 'float32'
   regByteOrder: text("reg_byte_order").default("BE"), // 'BE' | 'LE'
+  scaleTemp: doublePrecision("scale_temp").default(1.0),
+  scaleZVel: doublePrecision("scale_z_vel").default(1.0),
+  scaleXVel: doublePrecision("scale_x_vel").default(1.0),
+  scaleZAcc: doublePrecision("scale_z_acc").default(1.0),
+  scaleXAcc: doublePrecision("scale_x_acc").default(1.0),
 });
 
 export type Device = typeof devices.$inferSelect;

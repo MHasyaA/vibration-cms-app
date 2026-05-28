@@ -33,6 +33,8 @@ export class ModbusPollingService {
   private timers: Map<number, Timer> = new Map();
   // Map of connectionId -> runtime connection status
   private connectionStates: Map<number, { isOnline: boolean; lastSuccess?: Date }> = new Map();
+  // Track overlapping polling cycles
+  private pollingActive: Map<number, boolean> = new Map();
   // Track if the service has been started
   private isRunning = false;
 
@@ -72,7 +74,9 @@ export class ModbusPollingService {
     console.log(`[Modbus] Starting polling for ${activeConnections.length} active connection(s)...`);
 
     for (const conn of activeConnections) {
-      await this.startPolling(conn, ModbusRTU);
+      this.startPolling(conn, ModbusRTU).catch((err) => {
+        console.error(`[Modbus] Error in startPolling for connection ${conn.id}:`, err);
+      });
     }
 
     this.isRunning = true;
@@ -85,16 +89,50 @@ export class ModbusPollingService {
     const client = new ModbusRTU();
 
     try {
-      await client.connectTCP(connection.ipAddress, {
-        port: connection.tcpPort,
+      client.setTimeout(connection.timeout || 2000);
+      const connectionTimeout = connection.timeout || 2000;
+      
+      await new Promise<void>((resolve, reject) => {
+        let timer = setTimeout(() => {
+          timer = null as any;
+          try {
+            if (client._port && client._port._client && typeof client._port._client.destroy === "function") {
+              client._port._client.destroy();
+            } else if (client._client && typeof client._client.destroy === "function") {
+              client._client.destroy();
+            }
+          } catch {}
+          reject(new Error("TCP Connection Timed Out"));
+        }, connectionTimeout);
+
+        client.connectTCP(connection.ipAddress, { port: connection.tcpPort })
+          .then(() => {
+            if (timer) {
+              clearTimeout(timer);
+              resolve();
+            }
+          })
+          .catch((err: any) => {
+            if (timer) {
+              clearTimeout(timer);
+              reject(err);
+            }
+          });
       });
-      client.setTimeout(connection.timeout);
+
       this.clients.set(connection.id, client);
-      this.connectionStates.set(connection.id, { isOnline: true, lastSuccess: new Date() });
       console.log(`[Modbus] Connected to Modbus TCP @ ${connection.ipAddress}:${connection.tcpPort}`);
     } catch (err: any) {
       this.connectionStates.set(connection.id, { isOnline: false });
       console.error(`[Modbus] Initial connection failed to ${connection.ipAddress}:${connection.tcpPort}:`, err.message);
+      try {
+        if (client._port && client._port._client && typeof client._port._client.destroy === "function") {
+          client._port._client.destroy();
+        } else if (client._client && typeof client._client.destroy === "function") {
+          client._client.destroy();
+        }
+        client.close().catch(() => {});
+      } catch {}
       // Jangan return, tetap jalankan interval timer agar bisa reconnect otomatis
     }
 
@@ -110,6 +148,19 @@ export class ModbusPollingService {
    * Execute one polling cycle for a connection: read all its devices sequentially.
    */
   private async pollConnection(connectionId: number, connection: any) {
+    if (this.pollingActive.get(connectionId)) {
+      return; // Lewati jika siklus polling sebelumnya masih berjalan
+    }
+    this.pollingActive.set(connectionId, true);
+
+    try {
+      await this.executePollCycle(connectionId, connection);
+    } finally {
+      this.pollingActive.set(connectionId, false);
+    }
+  }
+
+  private async executePollCycle(connectionId: number, connection: any) {
     let client = this.clients.get(connectionId);
 
     // Jika client belum terbuat atau koneksi terputus (isOpen = false), coba reconnect
@@ -124,21 +175,66 @@ export class ModbusPollingService {
         return;
       }
 
-      if (!client) {
-        client = new ModbusRTU();
+      // Selalu bersihkan dan hancurkan client lama untuk menghindari zombie TCP sockets
+      if (client) {
+        try {
+          if (client._port && client._port._client && typeof client._port._client.destroy === "function") {
+            client._port._client.destroy();
+          } else if (client._client && typeof client._client.destroy === "function") {
+            client._client.destroy();
+          }
+          client.close().catch(() => {});
+        } catch {}
+        this.clients.delete(connectionId);
       }
+
+      // Instansiasi client bersih baru
+      client = new ModbusRTU();
 
       try {
         client.setTimeout(connection.timeout || 2000);
-        await client.connectTCP(connection.ipAddress, { port: connection.tcpPort });
+        const connectionTimeout = connection.timeout || 2000;
+
+        await new Promise<void>((resolve, reject) => {
+          let timer = setTimeout(() => {
+            timer = null as any;
+            try {
+              if (client._port && client._port._client && typeof client._port._client.destroy === "function") {
+                client._port._client.destroy();
+              } else if (client._client && typeof client._client.destroy === "function") {
+                client._client.destroy();
+              }
+            } catch {}
+            reject(new Error("TCP Connection Timed Out"));
+          }, connectionTimeout);
+
+          client.connectTCP(connection.ipAddress, { port: connection.tcpPort })
+            .then(() => {
+              if (timer) {
+                clearTimeout(timer);
+                resolve();
+              }
+            })
+            .catch((err: any) => {
+              if (timer) {
+                clearTimeout(timer);
+                reject(err);
+              }
+            });
+        });
+
         this.clients.set(connectionId, client);
-        this.connectionStates.set(connectionId, { isOnline: true, lastSuccess: new Date() });
         console.log(`[Modbus] Reconnected to Modbus TCP @ ${connection.ipAddress}:${connection.tcpPort}`);
       } catch (err: any) {
         this.connectionStates.set(connectionId, { isOnline: false });
         console.error(`[Modbus] Reconnection failed to ${connection.ipAddress}:${connection.tcpPort}:`, err.message);
         try {
-          await client.close();
+          if (client._port && client._port._client && typeof client._port._client.destroy === "function") {
+            client._port._client.destroy();
+          } else if (client._client && typeof client._client.destroy === "function") {
+            client._client.destroy();
+          }
+          client.close().catch(() => {});
         } catch {}
         this.clients.delete(connectionId);
         return; // Lewati poll cycle kali ini
@@ -163,19 +259,29 @@ export class ModbusPollingService {
           await dataService.insertSensorLog({ deviceId: device.id, ...reading });
           successfulReads++;
         } catch (err: any) {
-          console.error(`[Modbus] Error reading slave #${device.slaveId} (${device.namaSensor}):`, err.message);
+          console.error(`[Modbus] Read failed on ${connection.ipAddress}:${connection.tcpPort}: ${err.message}`);
           
           // Jika terjadi error koneksi socket closed atau timeout, putuskan client agar reconnect pada cycle berikutnya
-          const errMsg = err.message || "";
+          const errMsg = (err.message || "").toLowerCase();
           if (
             errMsg.includes("closed") || 
-            errMsg.includes("Lost") || 
+            errMsg.includes("lost") || 
             errMsg.includes("port") || 
-            errMsg.includes("Timeout") ||
-            errMsg.includes("ECONNRESET")
+            errMsg.includes("connection") || 
+            errMsg.includes("refused") || 
+            errMsg.includes("econnreset") || 
+            errMsg.includes("reset") || 
+            errMsg.includes("pipe") || 
+            errMsg.includes("host") || 
+            errMsg.includes("unreach")
           ) {
             try {
-              await client.close();
+              if (client._port && client._port._client && typeof client._port._client.destroy === "function") {
+                client._port._client.destroy();
+              } else if (client._client && typeof client._client.destroy === "function") {
+                client._client.destroy();
+              }
+              client.close().catch(() => {});
             } catch {}
             this.clients.delete(connectionId);
             this.connectionStates.set(connectionId, { isOnline: false });
@@ -185,10 +291,16 @@ export class ModbusPollingService {
       }
 
       // Mark the connection state based on reads
-      if (totalDevicesWithRegs > 0 && successfulReads === 0) {
-        this.connectionStates.set(connectionId, { isOnline: false });
+      if (totalDevicesWithRegs > 0) {
+        if (successfulReads === 0) {
+          this.connectionStates.set(connectionId, { isOnline: false });
+        } else {
+          this.connectionStates.set(connectionId, { isOnline: true, lastSuccess: new Date() });
+        }
       } else {
-        this.connectionStates.set(connectionId, { isOnline: true, lastSuccess: new Date() });
+        // Jika tidak ada device terdaftar, anggap online jika koneksi TCP terbuka
+        const isOpen = client && client.isOpen;
+        this.connectionStates.set(connectionId, { isOnline: !!isOpen, lastSuccess: isOpen ? new Date() : undefined });
       }
     } catch (err: any) {
       this.connectionStates.set(connectionId, { isOnline: false });
@@ -207,25 +319,29 @@ export class ModbusPollingService {
     // float32 uses 2 registers per value, int16/uint16 uses 1 register per value
     const regsPerValue = dataType === "float32" ? 2 : 1;
 
-    async function readParam(regAddr: number | null): Promise<number> {
+    async function readParam(regAddr: number | null, scale: number | null | undefined): Promise<number> {
       if (regAddr === null || regAddr === undefined) return 0;
       const result = await client.readHoldingRegisters(regAddr, regsPerValue);
       const buf = Buffer.from(result.buffer);
+      let rawVal = 0;
       if (dataType === "float32") {
-        return byteOrder === "BE" ? buf.readFloatBE(0) : buf.readFloatLE(0);
+        rawVal = byteOrder === "BE" ? buf.readFloatBE(0) : buf.readFloatLE(0);
       } else if (dataType === "uint16") {
-        return byteOrder === "BE" ? buf.readUInt16BE(0) : buf.readUInt16LE(0);
+        rawVal = byteOrder === "BE" ? buf.readUInt16BE(0) : buf.readUInt16LE(0);
       } else { // int16
-        return byteOrder === "BE" ? buf.readInt16BE(0) : buf.readInt16LE(0);
+        rawVal = byteOrder === "BE" ? buf.readInt16BE(0) : buf.readInt16LE(0);
       }
+      
+      const factor = (scale !== null && scale !== undefined) ? scale : 1.0;
+      return rawVal * factor;
     }
 
     const [temperature, zVelocity, xVelocity, zAcceleration, xAcceleration] = await Promise.all([
-      readParam(device.regTemp),
-      readParam(device.regZVel),
-      readParam(device.regXVel),
-      readParam(device.regZAcc),
-      readParam(device.regXAcc),
+      readParam(device.regTemp, device.scaleTemp),
+      readParam(device.regZVel, device.scaleZVel),
+      readParam(device.regXVel, device.scaleXVel),
+      readParam(device.regZAcc, device.scaleZAcc),
+      readParam(device.regXAcc, device.scaleXAcc),
     ]);
 
     return { temperature, zVelocity, xVelocity, zAcceleration, xAcceleration };
@@ -244,7 +360,12 @@ export class ModbusPollingService {
     const client = this.clients.get(connectionId);
     if (client) {
       try {
-        await client.close();
+        if (client._port && client._port._client && typeof client._port._client.destroy === "function") {
+          client._port._client.destroy();
+        } else if (client._client && typeof client._client.destroy === "function") {
+          client._client.destroy();
+        }
+        client.close().catch(() => {});
       } catch { /* ignore close errors */ }
       this.clients.delete(connectionId);
     }
@@ -257,7 +378,8 @@ export class ModbusPollingService {
    * Stop all active polling connections.
    */
   async stopAll() {
-    for (const connId of this.timers.keys()) {
+    const connIds = Array.from(this.timers.keys());
+    for (const connId of connIds) {
       await this.stopPolling(connId);
     }
     this.isRunning = false;

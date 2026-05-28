@@ -18,6 +18,12 @@ const regXAcc = ref<number | null>(null);
 const regDataType = ref('float32');
 const regByteOrder = ref('BE');
 
+const scaleTemp = ref<number>(1.0);
+const scaleZVel = ref<number>(1.0);
+const scaleXVel = ref<number>(1.0);
+const scaleZAcc = ref<number>(1.0);
+const scaleXAcc = ref<number>(1.0);
+
 const error = ref<string | null>(null);
 
 const deviceName = computed(() => props.device?.namaSensor || '');
@@ -34,6 +40,11 @@ watch(() => props.show, (newVal) => {
     regXAcc.value = props.device.regXAcc ?? null;
     regDataType.value = props.device.regDataType || 'float32';
     regByteOrder.value = props.device.regByteOrder || 'BE';
+    scaleTemp.value = props.device.scaleTemp ?? 1.0;
+    scaleZVel.value = props.device.scaleZVel ?? 1.0;
+    scaleXVel.value = props.device.scaleXVel ?? 1.0;
+    scaleZAcc.value = props.device.scaleZAcc ?? 1.0;
+    scaleXAcc.value = props.device.scaleXAcc ?? 1.0;
   }
 });
 
@@ -47,6 +58,11 @@ function handleSubmit() {
     regXAcc: regXAcc.value !== null && regXAcc.value !== undefined ? Number(regXAcc.value) : null,
     regDataType: regDataType.value,
     regByteOrder: regByteOrder.value,
+    scaleTemp: scaleTemp.value !== null && scaleTemp.value !== undefined ? Number(scaleTemp.value) : 1.0,
+    scaleZVel: scaleZVel.value !== null && scaleZVel.value !== undefined ? Number(scaleZVel.value) : 1.0,
+    scaleXVel: scaleXVel.value !== null && scaleXVel.value !== undefined ? Number(scaleXVel.value) : 1.0,
+    scaleZAcc: scaleZAcc.value !== null && scaleZAcc.value !== undefined ? Number(scaleZAcc.value) : 1.0,
+    scaleXAcc: scaleXAcc.value !== null && scaleXAcc.value !== undefined ? Number(scaleXAcc.value) : 1.0,
   };
   emit('save', payload);
 }
@@ -85,28 +101,96 @@ function handleSubmit() {
 
           <!-- Register Address Mapping -->
           <div class="form-section">
-            <h4>Alamat Register Holding (Modbus Address)</h4>
-            <div class="reg-grid">
-              <div class="form-group">
-                <label>Reg. Temperatur</label>
-                <input type="number" v-model="regTemp" min="0" max="65535" placeholder="misal: 0" class="text-mono" />
+            <h4>Alamat Register Holding & Faktor Skala (Scaling)</h4>
+            <div class="reg-rows-container">
+              <div class="reg-row-item">
+                <span class="reg-row-label">Temperatur (°C)</span>
+                <div class="reg-inputs-pair">
+                  <div class="input-with-label">
+                    <span class="field-hint">Register</span>
+                    <input type="number" v-model="regTemp" min="0" max="65535" placeholder="misal: 0" class="text-mono input-addr" />
+                  </div>
+                  <div class="input-with-label">
+                    <span class="field-hint">Faktor Skala (Multiplier)</span>
+                    <div class="scale-input-wrapper">
+                      <span class="mult-symbol">×</span>
+                      <input type="number" v-model="scaleTemp" step="any" placeholder="1.0" class="text-mono input-scale" />
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div class="form-group">
-                <label>Reg. Vel-Z (mm/s)</label>
-                <input type="number" v-model="regZVel" min="0" max="65535" placeholder="misal: 2" class="text-mono" />
+              
+              <div class="reg-row-item">
+                <span class="reg-row-label">Velocity Z (mm/s)</span>
+                <div class="reg-inputs-pair">
+                  <div class="input-with-label">
+                    <span class="field-hint">Register</span>
+                    <input type="number" v-model="regZVel" min="0" max="65535" placeholder="misal: 2" class="text-mono input-addr" />
+                  </div>
+                  <div class="input-with-label">
+                    <span class="field-hint">Faktor Skala (Multiplier)</span>
+                    <div class="scale-input-wrapper">
+                      <span class="mult-symbol">×</span>
+                      <input type="number" v-model="scaleZVel" step="any" placeholder="1.0" class="text-mono input-scale" />
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div class="form-group">
-                <label>Reg. Vel-X (mm/s)</label>
-                <input type="number" v-model="regXVel" min="0" max="65535" placeholder="misal: 4" class="text-mono" />
+
+              <div class="reg-row-item">
+                <span class="reg-row-label">Velocity X (mm/s)</span>
+                <div class="reg-inputs-pair">
+                  <div class="input-with-label">
+                    <span class="field-hint">Register</span>
+                    <input type="number" v-model="regXVel" min="0" max="65535" placeholder="misal: 4" class="text-mono input-addr" />
+                  </div>
+                  <div class="input-with-label">
+                    <span class="field-hint">Faktor Skala (Multiplier)</span>
+                    <div class="scale-input-wrapper">
+                      <span class="mult-symbol">×</span>
+                      <input type="number" v-model="scaleXVel" step="any" placeholder="1.0" class="text-mono input-scale" />
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div class="form-group">
-                <label>Reg. Acc-Z (mm/s²)</label>
-                <input type="number" v-model="regZAcc" min="0" max="65535" placeholder="misal: 6" class="text-mono" />
+
+              <div class="reg-row-item">
+                <span class="reg-row-label">Acceleration Z (mm/s²)</span>
+                <div class="reg-inputs-pair">
+                  <div class="input-with-label">
+                    <span class="field-hint">Register</span>
+                    <input type="number" v-model="regZAcc" min="0" max="65535" placeholder="misal: 6" class="text-mono input-addr" />
+                  </div>
+                  <div class="input-with-label">
+                    <span class="field-hint">Faktor Skala (Multiplier)</span>
+                    <div class="scale-input-wrapper">
+                      <span class="mult-symbol">×</span>
+                      <input type="number" v-model="scaleZAcc" step="any" placeholder="1.0" class="text-mono input-scale" />
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div class="form-group">
-                <label>Reg. Acc-X (mm/s²)</label>
-                <input type="number" v-model="regXAcc" min="0" max="65535" placeholder="misal: 8" class="text-mono" />
+
+              <div class="reg-row-item">
+                <span class="reg-row-label">Acceleration X (mm/s²)</span>
+                <div class="reg-inputs-pair">
+                  <div class="input-with-label">
+                    <span class="field-hint">Register</span>
+                    <input type="number" v-model="regXAcc" min="0" max="65535" placeholder="misal: 8" class="text-mono input-addr" />
+                  </div>
+                  <div class="input-with-label">
+                    <span class="field-hint">Faktor Skala (Multiplier)</span>
+                    <div class="scale-input-wrapper">
+                      <span class="mult-symbol">×</span>
+                      <input type="number" v-model="scaleXAcc" step="any" placeholder="1.0" class="text-mono input-scale" />
+                    </div>
+                  </div>
+                </div>
               </div>
+            </div>
+            
+            <div class="info-note" style="margin-top: 15px;">
+              💡 <strong>Informasi Penskalaan (Scaling):</strong> Gunakan faktor skala jika data raw register dari perangkat berupa integer tetapi mewakili pecahan decimal. Misalnya, jika data suhu di register bernilai <code>2535</code> dan suhu aktualnya <code>25.35 °C</code>, isi Faktor Skala dengan <code>0.01</code>. Jika tidak memerlukan penskalaan, biarkan <code>1.0</code>.
             </div>
           </div>
 
@@ -204,10 +288,72 @@ function handleSubmit() {
   border-bottom: 1px solid var(--border-color);
 }
 
-.reg-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
+.reg-rows-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.reg-row-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid var(--border-color);
+  padding: 10px 14px;
+  border-radius: 10px;
+  gap: 16px;
+}
+
+.reg-row-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  min-width: 150px;
+}
+
+.reg-inputs-pair {
+  display: flex;
   gap: 12px;
+  flex-grow: 1;
+}
+
+.input-with-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.field-hint {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.scale-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.mult-symbol {
+  position: absolute;
+  left: 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+}
+
+.input-addr {
+  width: 100%;
+}
+
+.input-scale {
+  width: 100%;
+  padding-left: 24px !important;
 }
 
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }

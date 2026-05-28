@@ -37,6 +37,8 @@ export const deviceController = new Elysia({ prefix: "/devices" })
     async ({ body, set }) => {
       try {
         const newDevice = await deviceService.createDevice(body);
+        const { modbusPollingService } = await import("../services/modbusPollingService");
+        modbusPollingService.restartAll().catch((err) => console.error("[Modbus] Failed to restart polling:", err));
         set.status = 201;
         return {
           success: true,
@@ -71,6 +73,11 @@ export const deviceController = new Elysia({ prefix: "/devices" })
         regXAcc: t.Optional(t.Nullable(t.Integer({ minimum: 0 }))),
         regDataType: t.Optional(t.String()),
         regByteOrder: t.Optional(t.String()),
+        scaleTemp: t.Optional(t.Nullable(t.Number())),
+        scaleZVel: t.Optional(t.Nullable(t.Number())),
+        scaleXVel: t.Optional(t.Nullable(t.Number())),
+        scaleZAcc: t.Optional(t.Nullable(t.Number())),
+        scaleXAcc: t.Optional(t.Nullable(t.Number())),
       }),
     }
   )
@@ -87,6 +94,8 @@ export const deviceController = new Elysia({ prefix: "/devices" })
         }
         
         const updated = await deviceService.updateDevice(deviceId, body);
+        const { modbusPollingService } = await import("../services/modbusPollingService");
+        modbusPollingService.restartAll().catch((err) => console.error("[Modbus] Failed to restart polling:", err));
         return {
           success: true,
           message: "Device updated successfully",
@@ -126,6 +135,11 @@ export const deviceController = new Elysia({ prefix: "/devices" })
         regXAcc: t.Optional(t.Nullable(t.Integer({ minimum: 0 }))),
         regDataType: t.Optional(t.Nullable(t.String())),
         regByteOrder: t.Optional(t.Nullable(t.String())),
+        scaleTemp: t.Optional(t.Nullable(t.Number())),
+        scaleZVel: t.Optional(t.Nullable(t.Number())),
+        scaleXVel: t.Optional(t.Nullable(t.Number())),
+        scaleZAcc: t.Optional(t.Nullable(t.Number())),
+        scaleXAcc: t.Optional(t.Nullable(t.Number())),
       }),
     }
   )
@@ -142,6 +156,8 @@ export const deviceController = new Elysia({ prefix: "/devices" })
         }
         
         const deleted = await deviceService.deleteDevice(deviceId);
+        const { modbusPollingService } = await import("../services/modbusPollingService");
+        modbusPollingService.restartAll().catch((err) => console.error("[Modbus] Failed to restart polling:", err));
         return {
           success: true,
           message: "Device deleted successfully",
