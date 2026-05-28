@@ -6,6 +6,8 @@ import TrendLineChart from './components/TrendLineChart.vue';
 import DeviceModal from './components/DeviceModal.vue';
 import ModbusConfigModal from './components/ModbusConfigModal.vue';
 import ModbusRegisterModal from './components/ModbusRegisterModal.vue';
+import darkLogo from './assets/dark_logo.png';
+import lightLogo from './assets/light_logo.png';
 import { 
   DUMMY_DEVICES, 
   generateDummyTelemetries, 
@@ -577,8 +579,11 @@ onUnmounted(() => {
     <!-- LEFT SIDEBAR -->
     <aside class="scada-sidebar">
       <div class="brand">
-        <div class="pulse-icon animate-pulse"></div>
-        <h3>VIBRA-SENSE</h3>
+        <img :src="theme === 'dark' ? darkLogo : lightLogo" class="company-logo" alt="PT Logo" />
+        <div class="brand-text">
+          <h3 class="system-name">VIBRA-SENSE</h3>
+          <span class="client-name">PT. MAJU MUNDUR</span>
+        </div>
       </div>
       
       <nav class="nav-links">
@@ -660,6 +665,24 @@ onUnmounted(() => {
           <span class="username">{{ username }}</span>
         </div>
         <button @click="handleLogout" class="btn-logout">LOGOUT</button>
+      </div>
+
+      <div class="sidebar-contact">
+        <h4 class="contact-title">PT. MAJU MUNDUR</h4>
+        <div class="contact-details">
+          <p class="contact-item">
+            <span class="contact-icon">📞</span>
+            <span class="contact-text">+62 800 1234 567</span>
+          </p>
+          <p class="contact-item">
+            <span class="contact-icon">✉️</span>
+            <span class="contact-text">info@company.com</span>
+          </p>
+          <p class="contact-item">
+            <span class="contact-icon">🏢</span>
+            <span class="contact-text">Jl. Contoh Kawasan Industri No. 1, Kota</span>
+          </p>
+        </div>
       </div>
     </aside>
 
@@ -1390,17 +1413,43 @@ onUnmounted(() => {
 
 .scada-sidebar .brand {
   height: var(--header-height);
-  padding: 0 24px;
+  padding: 0 20px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   border-bottom: 1px solid var(--border-color);
 }
 
-.scada-sidebar .brand h3 {
-  font-size: 1.1rem;
+.scada-sidebar .brand .company-logo {
+  height: 38px;
+  max-width: 50px;
+  object-fit: contain;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.scada-sidebar .brand .brand-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.scada-sidebar .brand .system-name {
+  font-size: 0.95rem;
   font-weight: 800;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
+  color: var(--text-primary);
+  line-height: 1.1;
+  margin: 0;
+}
+
+.scada-sidebar .brand .client-name {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
+  margin-top: 2px;
 }
 
 .pulse-icon {
@@ -1617,6 +1666,48 @@ onUnmounted(() => {
   background: var(--status-critical-glow);
   color: var(--status-critical);
   border-color: rgba(239, 68, 68, 0.2);
+}
+
+/* SIDEBAR CONTACT BRANDING */
+.sidebar-contact {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color);
+  background: rgba(13, 25, 38, 0.1);
+}
+
+.scada-sidebar .sidebar-contact .contact-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.sidebar-contact .contact-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-contact .contact-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+  margin: 0;
+}
+
+.sidebar-contact .contact-icon {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+}
+
+.sidebar-contact .contact-text {
+  word-break: break-word;
 }
 
 /* SCADA CONTENT GRID CONTAINER */
