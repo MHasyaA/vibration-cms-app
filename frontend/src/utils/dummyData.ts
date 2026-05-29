@@ -284,11 +284,51 @@ export const generateDummyTrend = (deviceId: number, start?: string, end?: strin
 export const DUMMY_ANALYTICS_SUMMARY = {
   totalDevices:      DUMMY_DEVICES.length,
   totalActiveAlarms: DUMMY_ALARMS_ACTIVE.length,
+  healthScore: 78,
+  isoCompliance: {
+    compliant: 4,
+    nonCompliant: 1,
+    compliantPercentage: 80,
+    zoneA: 2,
+    zoneB: 2,
+    zoneC: 1,
+    zoneD: 0
+  },
+  alarmTrend: {
+    percentage: -15,
+    history: [
+      { date: "2026-05-22", count: 2 },
+      { date: "2026-05-23", count: 3 },
+      { date: "2026-05-24", count: 1 },
+      { date: "2026-05-25", count: 4 },
+      { date: "2026-05-26", count: 2 },
+      { date: "2026-05-27", count: 3 },
+      { date: "2026-05-28", count: 2 }
+    ]
+  },
+  worstPerformers: [
+    { deviceId: 3, deviceName: "Compressor Utama", parameter: "zVelocity", value: 7.8, limit: 7.1, ratio: 109.8 },
+    { deviceId: 2, deviceName: "Chiller Unit B", parameter: "temperature", value: 58.2, limit: 70.0, ratio: 83.1 },
+    { deviceId: 5, deviceName: "Exhaust Fan Utilitas", parameter: "xVelocity", value: 3.8, limit: 5.0, ratio: 76.0 }
+  ],
+  timeToMaintenance: [
+    { deviceId: 3, deviceName: "Compressor Utama", parameter: "zVelocity", estimatedDays: 3, slope: 0.450 },
+    { deviceId: 5, deviceName: "Exhaust Fan Utilitas", parameter: "xVelocity", estimatedDays: 14, slope: 0.120 },
+    { deviceId: 2, deviceName: "Chiller Unit B", parameter: "temperature", estimatedDays: 28, slope: 0.320 }
+  ],
+  baseliningDeviations: [
+    { deviceId: 3, deviceName: "Compressor Utama", parameter: "zVelocity", deviation: 3.4, isAnomaly: true },
+    { deviceId: 2, deviceName: "Chiller Unit B", parameter: "temperature", deviation: 1.8, isAnomaly: false },
+    { deviceId: 5, deviceName: "Exhaust Fan Utilitas", parameter: "xVelocity", deviation: 2.1, isAnomaly: false },
+    { deviceId: 1, deviceName: "Motor Pompa 3-Phase A", parameter: "zAcceleration", deviation: 0.4, isAnomaly: false },
+    { deviceId: 4, deviceName: "Cooling Tower Fan", parameter: "temperature", deviation: -0.8, isAnomaly: false }
+  ],
   deviceStats: [
-    { id: 1, name: "Motor Pompa 3-Phase A", status: 'safe'     },
-    { id: 2, name: "Chiller Unit B",         status: 'warning'  },
-    { id: 3, name: "Compressor Utama",       status: 'critical' },
-    { id: 4, name: "Cooling Tower Fan",      status: 'safe'     },
-    { id: 5, name: "Exhaust Fan Utilitas",   status: 'warning'  },
+    { deviceId: 1, namaSensor: "Motor Pompa 3-Phase A", lokasi: "Gedung Pompa Lt 1", status: 'safe' },
+    { deviceId: 2, namaSensor: "Chiller Unit B", lokasi: "Utility Room Lt 2", status: 'warning' },
+    { deviceId: 3, namaSensor: "Compressor Utama", lokasi: "Power House Lt 1", status: 'critical' },
+    { deviceId: 4, namaSensor: "Cooling Tower Fan", lokasi: "Atap Utility Room", status: 'safe' },
+    { deviceId: 5, namaSensor: "Exhaust Fan Utilitas", lokasi: "Gedung Produksi", status: 'warning' }
   ]
 };
+

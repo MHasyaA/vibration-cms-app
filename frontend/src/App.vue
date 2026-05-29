@@ -44,6 +44,14 @@ const totalDevicesCount = ref(0);
 const activeAlarmsCount = ref(0);
 const deviceStatsList = ref<any[]>([]);
 
+// Advanced Analytics State
+const healthScore = ref(100);
+const isoCompliance = ref<any>({ compliant: 0, nonCompliant: 0, compliantPercentage: 100, zoneA: 0, zoneB: 0, zoneC: 0, zoneD: 0 });
+const alarmTrend = ref<any>({ percentage: 0, history: [] });
+const worstPerformers = ref<any[]>([]);
+const timeToMaintenance = ref<any[]>([]);
+const baseliningDeviations = ref<any[]>([]);
+
 // Trend Filter State
 const trendStart = ref<string | undefined>(undefined);
 const trendEnd = ref<string | undefined>(undefined);
@@ -218,6 +226,12 @@ async function fetchAnalyticsSummary() {
     totalDevicesCount.value = DUMMY_ANALYTICS_SUMMARY.totalDevices;
     activeAlarmsCount.value = DUMMY_ANALYTICS_SUMMARY.totalActiveAlarms;
     deviceStatsList.value = DUMMY_ANALYTICS_SUMMARY.deviceStats;
+    healthScore.value = DUMMY_ANALYTICS_SUMMARY.healthScore;
+    isoCompliance.value = DUMMY_ANALYTICS_SUMMARY.isoCompliance;
+    alarmTrend.value = DUMMY_ANALYTICS_SUMMARY.alarmTrend;
+    worstPerformers.value = DUMMY_ANALYTICS_SUMMARY.worstPerformers;
+    timeToMaintenance.value = DUMMY_ANALYTICS_SUMMARY.timeToMaintenance;
+    baseliningDeviations.value = DUMMY_ANALYTICS_SUMMARY.baseliningDeviations;
     return;
   }
   const res = await fetch('/api/analytics/summary', { headers: getHeaders() });
@@ -226,6 +240,12 @@ async function fetchAnalyticsSummary() {
     totalDevicesCount.value = result.data.totalDevices;
     activeAlarmsCount.value = result.data.totalActiveAlarms;
     deviceStatsList.value = result.data.deviceStats;
+    healthScore.value = result.data.healthScore ?? 100;
+    isoCompliance.value = result.data.isoCompliance ?? { compliant: 0, nonCompliant: 0, compliantPercentage: 100, zoneA: 0, zoneB: 0, zoneC: 0, zoneD: 0 };
+    alarmTrend.value = result.data.alarmTrend ?? { percentage: 0, history: [] };
+    worstPerformers.value = result.data.worstPerformers ?? [];
+    timeToMaintenance.value = result.data.timeToMaintenance ?? [];
+    baseliningDeviations.value = result.data.baseliningDeviations ?? [];
   }
 }
 
@@ -370,6 +390,20 @@ function openEditDeviceModal(device: any) {
 }
 
 // --- Dynamic Telemetry Helpers ---
+const compliancePercentA = computed(() => {
+  const tot = totalDevicesCount.value;
+  return tot > 0 ? (isoCompliance.value.zoneA / tot) * 100 : 100;
+});
+const compliancePercentB = computed(() => {
+  const tot = totalDevicesCount.value;
+  return tot > 0 ? (isoCompliance.value.zoneB / tot) * 100 : 0;
+});
+const compliancePercentC = computed(() => {
+  const tot = totalDevicesCount.value;
+  return tot > 0 ? (isoCompliance.value.zoneC / tot) * 100 : 0;
+});
+
+
 const selectedDeviceDetails = computed(() => {
   if (selectedDeviceId.value === null) return null;
   return devicesList.value.find(d => d.id === selectedDeviceId.value) || null;
@@ -408,6 +442,13 @@ function isDeviceOnline(device: any): boolean {
   const connections = isDummyMode.value ? DUMMY_MODBUS_CONNECTIONS : modbusConnections.value;
   const conn = connections.find((c: any) => c.id === device.connectionId);
   return conn ? conn.isOnline : false;
+}
+
+function getTrendBarHeight(dayCount: any) {
+  const history = alarmTrend.value?.history || [];
+  const counts = history.map((h: any) => Number(h.count || 0));
+  const max = Math.max(...counts, 1);
+  return Math.max((Number(dayCount || 0) / max) * 75, Number(dayCount || 0) > 0 ? 6 : 1);
 }
 
 function getHintValue(val: any, decimals = 1) {
@@ -588,7 +629,7 @@ onUnmounted(() => {
     <div class="login-box glass-panel">
       <div class="logo-area">
         <div class="scada-dot pulsing"></div>
-        <h2>VIBRATION<span class="accent-text">// SCADA CMS</span></h2>
+        <h2>VIBRATION<span class="accent-text"> // CMS</span></h2>
       </div>
       <p class="login-sub">Condition Monitoring System - Industri 4.0</p>
       
@@ -790,26 +831,11 @@ onUnmounted(() => {
       <main class="scada-main-content">
         
         <!-- PAGE A: OVERVIEW DASHBOARD -->
-        <section v-if="activePage === 'overview'" class="page-sec flex-col">
-          <!-- Analytics counters -->
-          <div class="stats-row" style="margin-bottom: 24px;">
-            <div class="glass-panel stat-card">
-              <span class="lbl">TOTAL PERANGKAT</span>
-              <span class="val text-mono text-gradient">{{ totalDevicesCount }}</span>
-            </div>
-            <div class="glass-panel stat-card alarm-bg" :class="{ critical: activeAlarms.length > 0 }">
-              <span class="lbl">ALARM AKTIF SAAT INI</span>
-              <span class="val text-mono">{{ activeAlarms.length }}</span>
-            </div>
-            <div class="glass-panel stat-card">
-              <span class="lbl">STATUS MONITORING</span>
-              <span v-if="activeAlarms.length > 0" class="val" style="color: var(--status-critical); font-weight: 800;">SISTEM ALERT</span>
-              <span v-else class="val text-gradient" style="color: var(--status-safe); font-weight: 800;">SISTEM NORMAL</span>
-            </div>
-          </div>
+        <section v-if="activePage === 'overview'" class="page-sec flex-col" style="gap: 0;">
+
           
           <!-- 5 Parameter Comparison Cards -->
-          <div class="comparison-grid" style="order: 2;">
+          <div class="comparison-grid" style="order: 4; margin-top: 16px;">
             <div class="glass-panel comp-card">
               <h4>Velocity Z (mm/s)</h4>
               <div class="comp-list">
@@ -877,7 +903,7 @@ onUnmounted(() => {
           </div>
           
           <!-- Grid of all devices overview cards -->
-          <div class="devices-grid" style="order: 1;">
+          <div class="devices-grid" style="order: 3; margin-top: 0;">
             <div 
               v-for="d in devicesList" 
               :key="d.id"
@@ -929,6 +955,193 @@ onUnmounted(() => {
               </div>
             </div>
           </div>
+
+          <!-- ADVANCED PERFORMANCE ANALYTICS SECTION -->
+          <div class="advanced-analytics-container" style="order: 1; margin-top: 0; margin-bottom: 0; width: 100%;">
+            <div class="analytics-grid">
+              
+              <!-- CARD 1: OVERALL SYSTEM HEALTH SCORE & TOTAL DEVICES -->
+              <div class="glass-panel analytics-card health-card">
+                <div class="card-title">KESEHATAN & KAPASITAS SISTEM</div>
+                <div class="health-card-body">
+                  <div class="health-gauge-section">
+                    <svg width="145" height="145" viewBox="0 0 100 100">
+                      <circle cx="50" cy="50" r="44" stroke="rgba(255,255,255,0.04)" stroke-width="9" fill="none" />
+                      <circle cx="50" cy="50" r="44" 
+                              :stroke="healthScore >= 85 ? 'var(--status-safe)' : (healthScore >= 70 ? 'var(--status-warning)' : 'var(--status-critical)')" 
+                              stroke-width="9" 
+                              fill="none" 
+                              stroke-linecap="round" 
+                              stroke-dasharray="276.46" 
+                              :stroke-dashoffset="276.46 - (276.46 * healthScore) / 100"
+                              style="transition: stroke-dashoffset 0.8s ease-in-out;" />
+                      <text x="50" y="56" text-anchor="middle" font-size="18" font-weight="800" fill="white" class="text-mono">{{ healthScore }}%</text>
+                    </svg>
+                  </div>
+                  <div class="health-info-section">
+                    <div class="health-status-badge" :class="healthScore >= 85 ? 'safe' : (healthScore >= 70 ? 'warning' : 'critical')">
+                      {{ healthScore >= 85 ? 'SISTEM SEHAT' : (healthScore >= 70 ? 'PERLU PERHATIAN' : 'SISTEM KRITIS') }}
+                    </div>
+                    <div class="capacity-info">
+                      <span class="capacity-label">KAPASITAS MONITORING</span>
+                      <div class="capacity-count-display">
+                        <span class="count-num text-mono">{{ totalDevicesCount }}</span>
+                        <span class="count-unit">Perangkat Aktif</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- CARD 2: ISO 10816 COMPLIANCE STATUS -->
+              <div class="glass-panel analytics-card iso-compliance-card">
+                <div class="card-title">KEPATUHAN STANDAR ISO 10816</div>
+                <div class="iso-donut-wrapper">
+                  <div class="donut-chart" :style="{ background: `conic-gradient(#10b981 0% ${compliancePercentA}%, #06b6d4 ${compliancePercentA}% ${compliancePercentA + compliancePercentB}%, #f59e0b ${compliancePercentA + compliancePercentB}% ${compliancePercentA + compliancePercentB + compliancePercentC}%, #ef4444 ${compliancePercentA + compliancePercentB + compliancePercentC}% 100%)` }">
+                    <div class="donut-hole">
+                      <span class="pct text-mono">{{ isoCompliance.compliantPercentage }}%</span>
+                      <span class="lbl">COMPLIANT</span>
+                    </div>
+                  </div>
+                  <div class="iso-legend">
+                    <div class="legend-item"><span class="color-dot zone-a"></span><span class="lbl"><strong>Kelas A</strong> (Sangat Baik): {{ isoCompliance.zoneA || 0 }}</span></div>
+                    <div class="legend-item"><span class="color-dot zone-b"></span><span class="lbl"><strong>Kelas B</strong> (Normal): {{ isoCompliance.zoneB || 0 }}</span></div>
+                    <div class="legend-item"><span class="color-dot zone-c"></span><span class="lbl"><strong>Kelas C</strong> (Waspada): {{ isoCompliance.zoneC || 0 }}</span></div>
+                    <div class="legend-item"><span class="color-dot zone-d"></span><span class="lbl"><strong>Kelas D</strong> (Bahaya): {{ isoCompliance.zoneD || 0 }}</span></div>
+                  </div>
+                </div>
+                <div class="iso-info-note">
+                  Regulasi evaluasi tingkat keparahan getaran mesin (RMS Velocity mm/s). Kelas A/B = Aman, Kelas C = Warning, Kelas D = Kritis.
+                  <div class="iso-regulation-hint" style="font-size: 0.58rem; color: var(--accent-cyan); margin-top: 3px; font-weight: 500;">
+                    Digunakan untuk memantau kesehatan operasional dan mendeteksi dini indikasi kegagalan mekanikal (misal: misalignment, unbalance).
+                  </div>
+                </div>
+              </div>
+
+              <!-- CARD 3: SELF-BASELINING DEVIATION (ANOMALY) -->
+              <div class="glass-panel analytics-card anomaly-card">
+                <div class="card-title">DEVIAASI BASELINE & DETEKSI ANOMALI</div>
+                <div class="anomaly-content" v-if="baseliningDeviations && baseliningDeviations.length > 0">
+                  <div class="deviation-rows-scroll">
+                    <div class="dev-row" v-for="(item, idx) in baseliningDeviations.slice(0, 3)" :key="'dev-'+idx">
+                      <div class="dev-info">
+                        <span class="name">{{ item.deviceName }}</span>
+                        <span class="param text-mono">{{ item.parameter }}</span>
+                      </div>
+                      <div class="dev-badge-wrapper">
+                        <span class="sigma-val text-mono" :class="{ 'critical-sig': Math.abs(item.deviation) >= 3 }">
+                          {{ item.deviation > 0 ? '+' : '' }}{{ item.deviation }}σ
+                        </span>
+                        <span class="badge-anom flash-animation" v-if="item.isAnomaly">ANOMALI!</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="anomaly-empty text-mono" v-else>Tidak ada deviasi anomali terdeteksi</div>
+              </div>
+
+              <!-- CARD 4: TIME TO MAINTENANCE (LINEAR REGRESSION) -->
+              <div class="glass-panel analytics-card regression-card">
+                <div class="card-title">ESTIMASI WAKTU PEMELIHARAAN</div>
+                <div class="regression-content" v-if="timeToMaintenance && timeToMaintenance.length > 0">
+                  <div class="regression-badge-glow">
+                    <span class="days text-mono">{{ timeToMaintenance[0].estimatedDays }} Hari</span>
+                    <span class="lbl">Hingga Batas Kritis</span>
+                  </div>
+                  <div class="maintenance-hint text-mono">
+                    Device: {{ timeToMaintenance[0].deviceName }} ({{ timeToMaintenance[0].parameter }})<br>
+                    Degradasi: +{{ (timeToMaintenance[0].slope || 0).toFixed(3) }}/hari
+                  </div>
+                  <div class="sparkline-wrapper">
+                    <svg width="100%" height="32" viewBox="0 0 200 32">
+                      <path d="M 10 26 L 190 6" stroke="var(--status-critical)" stroke-width="2" stroke-dasharray="3" fill="none" />
+                      <circle cx="10" cy="26" r="3" fill="var(--status-safe)" />
+                      <circle cx="190" cy="6" r="4" fill="var(--status-critical)" />
+                    </svg>
+                  </div>
+                </div>
+                <div class="regression-empty text-mono" v-else>Tidak ada gejala degradasi (Sistem Stabil)</div>
+              </div>
+
+              <!-- CARD 5: STATUS MONITORING -->
+              <div class="glass-panel analytics-card status-monitoring-card" :class="{ 'alert-mode': activeAlarms.length > 0 }">
+                <div class="card-title">STATUS MONITORING</div>
+                <div class="status-badge-wrapper">
+                  <div v-if="activeAlarms.length > 0" class="status-neon-glow critical">
+                    <span class="icon">⚠</span>
+                    <span class="lbl">SISTEM ALERT</span>
+                  </div>
+                  <div v-else class="status-neon-glow safe">
+                    <span class="icon">✓</span>
+                    <span class="lbl">SISTEM NORMAL</span>
+                  </div>
+                </div>
+                <div class="status-hint-desc text-mono">
+                  {{ activeAlarms.length > 0 ? 'Segera periksa worst performer' : 'Seluruh parameter beroperasi wajar' }}
+                </div>
+              </div>
+
+              <!-- CARD 6: ALARM AKTIF SAAT INI -->
+              <div class="glass-panel analytics-card active-alarms-card" :class="{ 'alarm-active': activeAlarms.length > 0 }">
+                <div class="card-title">ALARM AKTIF SAAT INI</div>
+                <div class="alarm-val-wrapper">
+                  <span class="count text-mono" :class="{ 'critical-text': activeAlarms.length > 0 }">{{ activeAlarms.length }}</span>
+                  <span class="desc">Alarm Aktif Terdeteksi</span>
+                </div>
+                <div class="alarm-status-indicator">
+                  <span v-if="activeAlarms.length > 0" class="badge-active-alarm pulse-soft-animation">⚠ ALERT AKTIF</span>
+                  <span v-else class="badge-safe-alarm">✓ AMAN</span>
+                </div>
+              </div>
+
+              <!-- CARD 7: TREN ALARM 7 HARI -->
+              <div class="glass-panel analytics-card alarm-trend-card">
+                <div class="card-header-flex">
+                  <div class="card-title">TREN ALARM 7 HARI</div>
+                  <div class="trend-badge" :class="alarmTrend.percentage <= 0 ? 'good' : 'bad'">
+                    {{ alarmTrend.percentage <= 0 ? '' : '+' }}{{ alarmTrend.percentage }}%
+                  </div>
+                </div>
+                <div class="trend-bars-wrapper" v-if="alarmTrend.history && alarmTrend.history.length > 0">
+                  <svg class="trend-chart-svg" width="100%" height="130" viewBox="0 0 300 130">
+                    <g v-for="(day, idx) in alarmTrend.history" :key="day.date">
+                      <rect :x="8 + Number(idx) * 41" 
+                            :y="110 - getTrendBarHeight(day.count)" 
+                            width="28" 
+                            :height="getTrendBarHeight(day.count)" 
+                            rx="4" 
+                            :fill="day.count > 0 ? 'var(--status-critical)' : 'rgba(255,255,255,0.08)'" />
+                      <text :x="22 + Number(idx) * 41" y="126" text-anchor="middle" font-size="10" fill="rgba(255,255,255,0.45)">{{ day.date.substring(8, 10) }}</text>
+                      <text :x="22 + Number(idx) * 41" :y="104 - getTrendBarHeight(day.count)" text-anchor="middle" font-size="10" font-weight="bold" fill="white" v-if="day.count > 0">{{ day.count }}</text>
+                    </g>
+                  </svg>
+                </div>
+                <div class="trend-empty" v-else>Tidak ada data log alarm</div>
+              </div>
+
+              <!-- CARD 8: TOP 3 WORST PERFORMERS -->
+              <div class="glass-panel analytics-card worst-performers-card">
+                <div class="card-title">TOP 3 WORST PERFORMERS</div>
+                <div class="worst-list" v-if="worstPerformers && worstPerformers.length > 0">
+                  <div class="worst-row" v-for="(item, idx) in worstPerformers" :key="'worst-'+idx">
+                    <div class="worst-info">
+                      <span class="name">{{ item.deviceName }}</span>
+                      <span class="param text-mono">{{ item.parameter }} ({{ item.value }}/{{ item.limit }})</span>
+                    </div>
+                    <div class="worst-progress-wrapper">
+                      <div class="worst-progress-track">
+                        <div class="worst-progress-fill" :style="{ width: Math.min(item.ratio, 100) + '%' }"></div>
+                      </div>
+                      <span class="ratio text-mono">{{ item.ratio }}%</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="worst-empty text-mono" v-else>Semua perangkat beroperasi prima (Safe)</div>
+              </div>
+
+            </div>
+          </div>
+          <div class="scada-section-divider" style="order: 2; width: 100%;"></div>
         </section>
 
         <!-- PAGE B: DETAIL SENSOR VIEW -->
@@ -2621,5 +2834,548 @@ onUnmounted(() => {
   opacity: 0.85;
   font-weight: 500;
   letter-spacing: 0.2px;
+}
+
+/* =========================================================================
+   ADVANCED PERFORMANCE ANALYTICS STYLING (PLANNING #8)
+   ========================================================================= */
+.advanced-analytics-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 0;
+  width: 100%;
+}
+
+@media (max-width: 1300px) {
+  .analytics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.analytics-card {
+  padding: 20px;
+  min-height: 210px;
+  height: 210px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s ease;
+}
+
+.analytics-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--border-glow-hover);
+  box-shadow: 0 12px 30px -10px rgba(0, 210, 255, 0.2);
+}
+
+.analytics-card .card-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 6px;
+}
+
+/* Card 1: Horizontal Health Card Layout */
+.health-card-body {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex: 1;
+  width: 100%;
+  min-height: 120px;
+}
+
+.health-gauge-section {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+}
+
+.health-info-section {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  flex: 1;
+  align-self: center;
+}
+
+.health-status-badge {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-block;
+  width: fit-content;
+}
+
+.health-status-badge.safe {
+  color: var(--status-safe);
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.15);
+}
+
+.health-status-badge.warning {
+  color: var(--status-warning);
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.15);
+}
+
+.health-status-badge.critical {
+  color: var(--status-critical);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.15);
+}
+
+.capacity-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.capacity-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.capacity-count-display {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.capacity-count-display .count-num {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.capacity-count-display .count-unit {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* Separator Line between Analytics & Realtime Data */
+.scada-section-divider {
+  border: none;
+  height: 1px;
+  background: var(--border-color);
+  margin: 14px 0 12px 0;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px rgba(0, 210, 255, 0.15);
+}
+
+/* Card 2: ISO Donut & Regulation Info */
+.iso-donut-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 16px;
+  flex: 1;
+}
+
+.donut-chart {
+  position: relative;
+  width: 105px;
+  height: 105px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.donut-hole {
+  width: 77px;
+  height: 77px;
+  border-radius: 50%;
+  background: var(--bg-space) !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.iso-info-note {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+  margin-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  padding-top: 6px;
+  text-align: center;
+}
+
+.donut-hole .pct {
+  font-size: 1rem;
+  font-weight: 700;
+  color: white;
+}
+
+.donut-hole .lbl {
+  font-size: 0.5rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.2px;
+}
+
+.iso-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-item .color-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.legend-item .color-dot.zone-a { background: #10b981; }
+.legend-item .color-dot.zone-b { background: #06b6d4; }
+.legend-item .color-dot.zone-c { background: #f59e0b; }
+.legend-item .color-dot.zone-d { background: #ef4444; }
+
+.legend-item .lbl {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* Card 3: Alarm Trend */
+.card-header-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.trend-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 12px;
+}
+
+.trend-badge.good {
+  color: var(--status-safe);
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.trend-badge.bad {
+  color: var(--status-critical);
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.trend-bars-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+/* Card 4: Active Alarms */
+.alarm-val-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+.alarm-val-wrapper .count {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.alarm-val-wrapper .count.critical-text {
+  color: var(--status-critical);
+  text-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+}
+
+.alarm-val-wrapper .desc {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.alarm-status-indicator {
+  text-align: center;
+  margin-top: 8px;
+}
+
+.badge-active-alarm {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 3px 10px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--status-critical);
+  border-radius: 20px;
+  letter-spacing: 0.5px;
+}
+
+.badge-safe-alarm {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 3px 10px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: var(--status-safe);
+  border-radius: 20px;
+  letter-spacing: 0.5px;
+}
+
+/* Card 5: Status Monitoring */
+.status-badge-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex: 1;
+}
+
+.status-neon-glow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: 0.5px;
+}
+
+.status-neon-glow.safe {
+  color: var(--status-safe);
+  background: rgba(16, 185, 129, 0.05);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.05);
+}
+
+.status-neon-glow.critical {
+  color: var(--status-critical);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.22);
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.1);
+  animation: pulse-soft 2s infinite ease-in-out;
+}
+
+.status-hint-desc {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 8px;
+}
+
+/* Card 6: Worst Performers */
+.worst-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+.worst-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.worst-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+}
+
+.worst-info .name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.worst-info .param {
+  color: var(--text-muted);
+  font-size: 0.65rem;
+}
+
+.worst-progress-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.worst-progress-track {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.worst-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--status-warning), var(--status-critical));
+  border-radius: 2px;
+}
+
+.worst-progress-wrapper .ratio {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--status-critical);
+  width: 32px;
+  text-align: right;
+}
+
+/* Card 7: Regression */
+.regression-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1;
+  gap: 8px;
+}
+
+.regression-badge-glow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 16px;
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.18);
+  border-radius: 10px;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.08);
+}
+
+.regression-badge-glow .days {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--status-critical);
+}
+
+.regression-badge-glow .lbl {
+  font-size: 0.58rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.maintenance-hint {
+  font-size: 0.65rem;
+  color: var(--text-primary);
+  text-align: center;
+  line-height: 1.3;
+}
+
+.sparkline-wrapper {
+  width: 100%;
+  opacity: 0.7;
+}
+
+/* Card 8: Anomaly */
+.anomaly-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.deviation-rows-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dev-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.dev-row .dev-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.dev-row .dev-info .name {
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.dev-row .dev-info .param {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+}
+
+.dev-badge-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dev-badge-wrapper .sigma-val {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--status-safe);
+}
+
+.dev-badge-wrapper .sigma-val.critical-sig {
+  color: var(--status-critical);
+}
+
+.dev-badge-wrapper .badge-anom {
+  font-size: 0.55rem;
+  font-weight: 800;
+  padding: 1px 3px;
+  background: var(--status-critical);
+  color: white;
+  border-radius: 3px;
+}
+
+@keyframes flash-red {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.flash-animation {
+  animation: flash-red 1.2s infinite ease-in-out;
 }
 </style>
