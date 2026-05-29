@@ -21,7 +21,7 @@ import {
 // --- State Router ---
 const activePage = ref<'login' | 'overview' | 'detail' | 'alarms' | 'devices' | 'modbus-config'>('login');
 const theme = ref<'dark' | 'light'>('dark');
-const isDummyMode = ref(false);
+const isDummyMode = ref(localStorage.getItem('scada_dummy_mode') === 'true');
 
 // --- Auth State ---
 const username = ref(localStorage.getItem('scada_username') || '');
@@ -104,40 +104,62 @@ async function handleLogin() {
   loginError.value = null;
   
   try {
-    // Attempt authentication by fetching devices list (requires auth)
-    const token = btoa(`${username.value}:${password.value}`);
-    const res = await fetch('/api/devices', {
-      headers: { 'Authorization': `Basic ${token}` }
-    });
-    
-    if (!res.ok) {
-      if (res.status === 401) {
-        throw new Error('Kredensial salah. Gunakan admin/adminpassword atau user/userpassword');
-      }
-      throw new Error(`Koneksi Backend Gagal (${res.status})`);
+    let isValidDummy = false;
+    if ((username.value === 'admin' && password.value === 'adminpassword') || 
+        (username.value === 'user' && password.value === 'userpassword')) {
+       isValidDummy = true;
     }
-    
-    const result = await res.json();
-    if (result.success) {
-      // Determine role from credentials (simple client-side heuristic for simulation, backed by real RBAC at backend)
-      const role = username.value === 'admin' ? 'admin' : 'user';
-      
-      localStorage.setItem('scada_username', username.value);
-      localStorage.setItem('scada_password', password.value);
-      localStorage.setItem('scada_role', role);
-      localStorage.setItem('scada_logged_in', 'true');
-      
-      userRole.value = role;
-      isLoggedIn.value = true;
-      loginError.value = null;
-      activePage.value = 'overview';
-      
-      // Load initial application data
-      await loadAllData();
-      startPolling();
+
+    if (isDummyMode.value) {
+       if (!isValidDummy) throw new Error('Kredensial salah. Gunakan admin/adminpassword atau user/userpassword');
+       await new Promise(r => setTimeout(r, 600)); // Simulate delay
     } else {
-      throw new Error(result.message || 'Gagal login.');
+      // Attempt authentication by fetching devices list
+      const token = btoa(`${username.value}:${password.value}`);
+      try {
+        const res = await fetch('/api/devices', {
+          headers: { 'Authorization': `Basic ${token}` }
+        });
+        
+        if (!res.ok) {
+          if (res.status === 401) {
+            throw new Error('Kredensial salah. Gunakan admin/adminpassword atau user/userpassword');
+          }
+          // Auto fallback if backend missing
+          if (isValidDummy) {
+            isDummyMode.value = true;
+          } else {
+            throw new Error(`Koneksi Backend Gagal (${res.status}). Gunakan mode demo.`);
+          }
+        }
+      } catch (e: any) {
+        if (e.message.includes('Kredensial')) throw e;
+        if (isValidDummy) {
+          isDummyMode.value = true;
+        } else {
+          throw new Error('Koneksi Backend Gagal. Centang Mode Demo & gunakan kredensial Pengujian.');
+        }
+      }
     }
+    
+    // Determine role
+    const role = username.value === 'admin' ? 'admin' : 'user';
+    
+    localStorage.setItem('scada_username', username.value);
+    localStorage.setItem('scada_password', password.value);
+    localStorage.setItem('scada_role', role);
+    localStorage.setItem('scada_logged_in', 'true');
+    if (isDummyMode.value) localStorage.setItem('scada_dummy_mode', 'true');
+    else localStorage.removeItem('scada_dummy_mode');
+    
+    userRole.value = role;
+    isLoggedIn.value = true;
+    loginError.value = null;
+    activePage.value = 'overview';
+    
+    // Load initial application data
+    await loadAllData();
+    startPolling();
   } catch (err: any) {
     loginError.value = err.message || 'Terjadi kesalahan sistem.';
   } finally {
@@ -151,6 +173,7 @@ function handleLogout() {
   password.value = '';
   userRole.value = '';
   isLoggedIn.value = false;
+  isDummyMode.value = false;
   activePage.value = 'login';
   stopPolling();
 }
@@ -645,6 +668,13 @@ onUnmounted(() => {
         <div class="input-group">
           <label>Password</label>
           <input type="password" v-model="password" placeholder="Masukkan password (cth: adminpassword)" required />
+        </div>
+        
+        <div class="input-group" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 5px;">
+          <input type="checkbox" id="demoMode" v-model="isDummyMode" style="width: auto; height: 16px; cursor: pointer;" />
+          <label for="demoMode" style="font-size: 0.85rem; cursor: pointer; color: var(--text-secondary); margin-bottom: 0;">
+            Gunakan Mode Demo (Tanpa Backend)
+          </label>
         </div>
         <button type="submit" class="login-btn" :disabled="loginLoading">
           <span v-if="loginLoading">Menghubungkan...</span>
