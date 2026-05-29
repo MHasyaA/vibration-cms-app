@@ -3451,9 +3451,9 @@ onUnmounted(() => {
 }
 
 .analytics-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-2px);
   border-color: var(--border-glow-hover);
-  box-shadow: 0 12px 30px -10px rgba(0, 210, 255, 0.2);
+  box-shadow: var(--shadow-premium);
 }
 
 .analytics-card .card-title {
@@ -3561,9 +3561,8 @@ onUnmounted(() => {
   border: none;
   height: 1px;
   background: var(--border-color);
-  margin: 14px 0 12px 0;
+  margin: 20px 0;
   flex-shrink: 0;
-  box-shadow: 0 0 8px rgba(0, 210, 255, 0.15);
 }
 
 /* Card 2: ISO Donut & Regulation Info */
@@ -3701,7 +3700,6 @@ onUnmounted(() => {
 
 .alarm-val-wrapper .count.critical-text {
   color: var(--status-critical);
-  text-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
 }
 
 .alarm-val-wrapper .desc {
@@ -3758,17 +3756,14 @@ onUnmounted(() => {
 
 .status-neon-glow.safe {
   color: var(--status-safe);
-  background: rgba(16, 185, 129, 0.05);
-  border: 1px solid rgba(16, 185, 129, 0.2);
-  box-shadow: 0 0 15px rgba(16, 185, 129, 0.05);
+  background: rgba(16, 185, 129, 0.04);
+  border: 1px solid rgba(16, 185, 129, 0.1);
 }
 
 .status-neon-glow.critical {
   color: var(--status-critical);
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.22);
-  box-shadow: 0 0 15px rgba(239, 68, 68, 0.1);
-  animation: pulse-soft 2s infinite ease-in-out;
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.15);
 }
 
 .status-hint-desc {
@@ -3851,10 +3846,9 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   padding: 8px 16px;
-  background: rgba(239, 68, 68, 0.06);
-  border: 1px solid rgba(239, 68, 68, 0.18);
+  background: rgba(239, 68, 68, 0.04);
+  border: 1px solid rgba(239, 68, 68, 0.1);
   border-radius: 10px;
-  box-shadow: 0 0 12px rgba(239, 68, 68, 0.08);
 }
 
 .regression-badge-glow .days {

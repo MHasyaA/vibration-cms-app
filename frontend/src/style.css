@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 :root {
   /* Dark Theme variables (Ice Blue) */
@@ -8,9 +8,9 @@
   --bg-input: #122133;
   --bg-input-hover: #1a304a;
   
-  --border-color: rgba(0, 210, 255, 0.15);
-  --border-glow: rgba(0, 210, 255, 0.2);
-  --border-glow-hover: rgba(58, 123, 213, 0.4);
+  --border-color: rgba(148, 163, 184, 0.12);
+  --border-glow: rgba(148, 163, 184, 0.15);
+  --border-glow-hover: rgba(0, 210, 255, 0.25);
   
   --text-primary: #e0f2fe;
   --text-secondary: #93c5fd;
@@ -18,19 +18,19 @@
   
   --accent-primary: #00d2ff;
   --accent-secondary: #3a7bd5;
-  --accent-cyan: #00ffff;
+  --accent-cyan: #38bdf8;
   
   --status-safe: #10b981;
   --status-warning: #f59e0b;
   --status-critical: #ef4444;
   
-  --status-safe-glow: rgba(16, 185, 129, 0.15);
-  --status-warning-glow: rgba(245, 158, 11, 0.15);
-  --status-critical-glow: rgba(239, 68, 68, 0.25);
+  --status-safe-glow: rgba(16, 185, 129, 0.08);
+  --status-warning-glow: rgba(245, 158, 11, 0.08);
+  --status-critical-glow: rgba(239, 68, 68, 0.12);
   
   --sidebar-width: 260px;
   --header-height: 70px;
-  --shadow-premium: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+  --shadow-premium: 0 8px 24px -8px rgba(0, 0, 0, 0.3);
   --glass-blur: blur(12px);
 }
 
@@ -42,9 +42,9 @@
   --bg-input: #e0f2fe;
   --bg-input-hover: #bae6fd;
   
-  --border-color: rgba(0, 85, 153, 0.1);
-  --border-glow: rgba(0, 136, 204, 0.15);
-  --border-glow-hover: rgba(0, 136, 204, 0.3);
+  --border-color: rgba(148, 163, 184, 0.15);
+  --border-glow: rgba(148, 163, 184, 0.2);
+  --border-glow-hover: rgba(0, 136, 204, 0.35);
   
   --text-primary: #0f172a;
   --text-secondary: #1e3a8a;
@@ -78,7 +78,7 @@ html, body {
   height: 100%;
   background-color: var(--bg-space);
   color: var(--text-primary);
-  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
   overflow: hidden; /* Lock viewport to prevent overall scrolling in SCADA full screen mode */
 }
 
