@@ -97,3 +97,13 @@ export const alarms = pgTable("alarms", {
 export type Alarm = typeof alarms.$inferSelect;
 export type NewAlarm = typeof alarms.$inferInsert;
 
+// Planning #9: System Settings Table
+export const systemSettings = pgTable("system_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+});
+
+export type SystemSetting = typeof systemSettings.$inferSelect;
+export type NewSystemSetting = typeof systemSettings.$inferInsert;
+
+
