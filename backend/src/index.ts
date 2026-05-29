@@ -6,15 +6,23 @@ import { alarmController } from "./controllers/alarmController";
 import { dataController } from "./controllers/dataController";
 import { analyticsController } from "./controllers/analyticsController";
 import { modbusController } from "./controllers/modbusController";
+import { settingsController } from "./controllers/settingsController";
 import { UserService } from "./services/userService";
+import { SettingsService } from "./services/settingsService";
 import { authPlugin } from "./middlewares/auth";
 import { modbusPollingService } from "./services/modbusPollingService";
 
 const userService = new UserService();
+const settingsService = new SettingsService();
 
 // Seed default users at startup if table is empty
 userService.seedDefaultUsers().catch((err) => {
   console.error("Failed to seed default users:", err);
+});
+
+// Seed default settings at startup if table is empty
+settingsService.seedDefaultSettings().catch((err) => {
+  console.error("Failed to seed default settings:", err);
 });
 
 const app = new Elysia()
@@ -28,7 +36,9 @@ const app = new Elysia()
       .use(dataController)
       .use(analyticsController)
       .use(modbusController)
+      .use(settingsController)
   )
+
   .listen({ port: 3000, hostname: "0.0.0.0" });
 
 

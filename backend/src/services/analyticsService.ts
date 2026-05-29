@@ -1,9 +1,36 @@
 import { db } from "../db/connection";
 import { devices, sensorLogs, alarms } from "../db/schema";
 import { sql, eq, desc } from "drizzle-orm";
+import { SettingsService } from "./settingsService";
+
+const settingsService = new SettingsService();
 
 export class AnalyticsService {
   async getSummary() {
+    // 0. Fetch dynamic settings
+    const settings = await settingsService.getSettings();
+    
+    // Parse dynamic settings with fallback defaults
+    const bobotWarningAlarm = parseFloat(settings.bobotWarningAlarm || "5");
+    const bobotCriticalAlarm = parseFloat(settings.bobotCriticalAlarm || "15");
+    const ambangKapasitasSistem = parseInt(settings.ambangKapasitasSistem || "5000000", 10);
+
+    const pilihanKelasMesin = settings.pilihanKelasMesin || "Class I";
+    const batasBawahZoneB = parseFloat(settings.batasBawahZoneB || "1.12");
+    const batasBawahZoneC = parseFloat(settings.batasBawahZoneC || "2.80");
+    const batasBawahZoneD = parseFloat(settings.batasBawahZoneD || "7.10");
+
+    const jendelaWaktuBaseline = parseInt(settings.jendelaWaktuBaseline || "7", 10);
+    const toleransiDeviasiMaksimal = parseFloat(settings.toleransiDeviasiMaksimal || "20");
+    const sensitivitasDeteksiAnomali = settings.sensitivitasDeteksiAnomali || "Medium";
+
+    const dataPointsRegression = parseInt(settings.dataPointsRegression || "14", 10);
+    const thresholdKritisKegagalan = parseFloat(settings.thresholdKritisKegagalan || "7.10");
+    const batasPeringatanHari = parseInt(settings.batasPeringatanHari || "15", 10);
+
+    const metrikPengurutan = settings.metrikPengurutan || "alarmFrequency";
+    const rentangWaktuEvaluasi = parseInt(settings.rentangWaktuEvaluasi || "168", 10);
+
     // 1. Fetch all devices
     const devicesList = await db.select().from(devices);
     const totalDevices = devicesList.length;
@@ -33,16 +60,17 @@ export class AnalyticsService {
     const latestLogs = latestLogsResult.rows as any[];
     const latestLogsMap = new Map(latestLogs.map((row) => [row.deviceId, row]));
 
-    // 4. Fetch all sensor logs from the last 7 days for trend, linear regression, and baselining
-    const sevenDaysLogs = await db
+    // 4. Fetch sensor logs dynamically based on max configuration range required
+    const maxDays = Math.max(jendelaWaktuBaseline, Math.ceil(rentangWaktuEvaluasi / 24), dataPointsRegression, 7);
+    const databaseLogs = await db
       .select()
       .from(sensorLogs)
-      .where(sql`timestamp >= NOW() - INTERVAL '7 days'`)
+      .where(sql`timestamp >= NOW() - ${maxDays} * INTERVAL '1 day'`)
       .orderBy(desc(sensorLogs.timestamp));
 
     // Map log files by deviceId for quick access
     const logsByDevice = new Map<number, typeof sensorLogs.$inferSelect[]>();
-    for (const log of sevenDaysLogs) {
+    for (const log of databaseLogs) {
       if (!logsByDevice.has(log.deviceId)) {
         logsByDevice.set(log.deviceId, []);
       }
@@ -52,9 +80,11 @@ export class AnalyticsService {
     // =========================================================================
     // CARD A: OVERALL SYSTEM HEALTH SCORE & STATUS
     // =========================================================================
-    let totalScore = 0;
     const deviceStats = [];
     const complianceDetails = { zoneA: 0, zoneB: 0, zoneC: 0, zoneD: 0 };
+    
+    let warningCount = 0;
+    let criticalCount = 0;
 
     for (const device of devicesList) {
       const tel = latestLogsMap.get(device.id);
@@ -64,7 +94,6 @@ export class AnalyticsService {
       const xvLimit = device.setpointXVel || 7.1;
 
       let status = "safe";
-      let weight = 100;
 
       if (tel) {
         const t = tel.temperature || 0;
@@ -73,21 +102,21 @@ export class AnalyticsService {
 
         if (t >= tLimit || zv >= zvLimit || xv >= xvLimit) {
           status = "critical";
-          weight = 0;
+          criticalCount++;
         } else if (t >= tLimit * 0.8 || zv >= zvLimit * 0.7 || xv >= xvLimit * 0.7) {
           status = "warning";
-          weight = 50;
+          warningCount++;
         }
 
         // =========================================================================
-        // CARD B: ISO 10816 COMPLIANCE STATUS
+        // CARD B: ISO 10816 COMPLIANCE STATUS (Using dynamic config boundaries)
         // =========================================================================
         const maxVel = Math.max(zv, xv);
-        if (maxVel < 1.8) {
+        if (maxVel < batasBawahZoneB) {
           complianceDetails.zoneA++;
-        } else if (maxVel < 4.5) {
+        } else if (maxVel < batasBawahZoneC) {
           complianceDetails.zoneB++;
-        } else if (maxVel < 7.1) {
+        } else if (maxVel < batasBawahZoneD) {
           complianceDetails.zoneC++;
         } else {
           complianceDetails.zoneD++;
@@ -95,8 +124,6 @@ export class AnalyticsService {
       } else {
         complianceDetails.zoneA++; // Default to good zone if no readings yet
       }
-
-      totalScore += weight;
 
       deviceStats.push({
         deviceId: device.id,
@@ -106,7 +133,10 @@ export class AnalyticsService {
       });
     }
 
-    const healthScore = totalDevices > 0 ? Math.round(totalScore / totalDevices) : 100;
+    // Health score calculations using customized warning and critical deduct weights
+    let healthScore = 100 - (warningCount * bobotWarningAlarm) - (criticalCount * bobotCriticalAlarm);
+    if (healthScore < 0) healthScore = 0;
+    healthScore = Math.round(healthScore);
     
     const compliantCount = complianceDetails.zoneA + complianceDetails.zoneB;
     const compliantPercentage = totalDevices > 0 ? Math.round((compliantCount / totalDevices) * 100) : 100;
@@ -162,6 +192,8 @@ export class AnalyticsService {
     // CARD D: TOP 3 WORST PERFORMERS & HIGH SEVERITY RATIOS
     // =========================================================================
     const worstPerformersList: any[] = [];
+    const evalCutoff = new Date(Date.now() - rentangWaktuEvaluasi * 60 * 60 * 1000);
+    const evalAlarms = alarmsList.filter((a) => new Date(a.timestamp) >= evalCutoff);
 
     for (const device of devicesList) {
       const tel = latestLogsMap.get(device.id);
@@ -201,6 +233,39 @@ export class AnalyticsService {
         }
       }
 
+      // Calculate customized sorting metric score
+      let sortingScore = 0;
+      if (metrikPengurutan === "alarmFrequency") {
+        sortingScore = evalAlarms.filter((a) => a.deviceId === device.id).length;
+      } else if (metrikPengurutan === "baselineDeviation") {
+        // Calculate highest deviation for sorting
+        const devLogs = logsByDevice.get(device.id);
+        if (devLogs && devLogs.length >= 3) {
+          const baselineCutoff = new Date(Date.now() - jendelaWaktuBaseline * 24 * 60 * 60 * 1000);
+          const baselineLogs = devLogs.filter((l) => new Date(l.timestamp) >= baselineCutoff);
+          if (baselineLogs.length >= 3) {
+            let maxZ = 0;
+            const params = ["temperature", "zVelocity", "xVelocity", "zAcceleration", "xAcceleration"];
+            for (const p of params) {
+              const values = baselineLogs.map((l) => (l as any)[p] || 0);
+              const sum = values.reduce((a, b) => a + b, 0);
+              const mean = sum / values.length;
+              const squareDiffs = values.map((v) => Math.pow(v - mean, 2));
+              const variance = squareDiffs.reduce((a, b) => a + b, 0) / values.length;
+              const stdDev = Math.sqrt(variance);
+              const latest = (tel as any)[p] || 0;
+              const sigma = stdDev < 0.01 ? 0.01 : stdDev;
+              const z = (latest - mean) / sigma;
+              if (Math.abs(z) > Math.abs(maxZ)) maxZ = z;
+            }
+            sortingScore = Math.abs(maxZ);
+          }
+        }
+      } else {
+        // Default "peakVibration" (highest current ratio)
+        sortingScore = maxRatio;
+      }
+
       if (maxRatio >= 50) {
         worstPerformersList.push({
           deviceId: device.id,
@@ -209,11 +274,12 @@ export class AnalyticsService {
           value: parseFloat(worstVal.toFixed(2)),
           limit: parseFloat(worstLimit.toFixed(2)),
           ratio: parseFloat(maxRatio.toFixed(1)),
+          sortingScore: sortingScore,
         });
       }
     }
 
-    worstPerformersList.sort((a, b) => b.ratio - a.ratio);
+    worstPerformersList.sort((a, b) => b.sortingScore - a.sortingScore);
     const worstPerformers = worstPerformersList.slice(0, 3);
 
     // =========================================================================
@@ -223,10 +289,15 @@ export class AnalyticsService {
 
     for (const item of worstPerformersList) {
       const devLogs = logsByDevice.get(item.deviceId);
-      if (!devLogs || devLogs.length < 3) continue;
+      if (!devLogs) continue;
+
+      // Filter based on regression dynamic config range
+      const regressionCutoff = new Date(Date.now() - dataPointsRegression * 24 * 60 * 60 * 1000);
+      const regressionLogs = devLogs.filter((l) => new Date(l.timestamp) >= regressionCutoff);
+      if (regressionLogs.length < 3) continue;
 
       // Filter and reverse so we have logs chronologically
-      const chronoLogs = [...devLogs].reverse();
+      const chronoLogs = [...regressionLogs].reverse();
       const firstTime = new Date(chronoLogs[0]!.timestamp).getTime();
 
       // Extrapolate times into fractional days
@@ -249,8 +320,9 @@ export class AnalyticsService {
         const latestTime = x[x.length - 1];
         const latestVal = y[y.length - 1];
         
-        // Days until reaching limit
-        const daysToLimit = (item.limit - latestVal) / slope;
+        // Days until reaching critical failure threshold configured
+        const targetThreshold = item.parameter.toLowerCase().includes("velocity") ? thresholdKritisKegagalan : item.limit;
+        const daysToLimit = (targetThreshold - latestVal) / slope;
         
         if (daysToLimit >= 0 && daysToLimit <= 120) {
           timeToMaintenance.push({
@@ -259,6 +331,7 @@ export class AnalyticsService {
             parameter: item.parameter,
             estimatedDays: Math.round(daysToLimit),
             slope: parseFloat(slope.toFixed(4)),
+            isCriticalWarning: Math.round(daysToLimit) < batasPeringatanHari,
           });
         }
       }
@@ -270,13 +343,22 @@ export class AnalyticsService {
     // CARD F: SELF-BASELINING DEVIATION (ANOMALY DETECTION)
     // =========================================================================
     const baseliningDeviations: any[] = [];
+    
+    let zThreshold = 3.0; // Default Medium Z-Score threshold
+    if (sensitivitasDeteksiAnomali === "Low") zThreshold = 4.0;
+    else if (sensitivitasDeteksiAnomali === "High") zThreshold = 2.0;
 
     for (const device of devicesList) {
       const tel = latestLogsMap.get(device.id);
       if (!tel) continue;
 
       const devLogs = logsByDevice.get(device.id);
-      if (!devLogs || devLogs.length < 5) continue;
+      if (!devLogs) continue;
+
+      // Filter baseline window based on dynamic settings
+      const baselineCutoff = new Date(Date.now() - jendelaWaktuBaseline * 24 * 60 * 60 * 1000);
+      const baselineLogs = devLogs.filter((l) => new Date(l.timestamp) >= baselineCutoff);
+      if (baselineLogs.length < 5) continue;
 
       // Determine parameter with max deviation
       const params = ["temperature", "zVelocity", "xVelocity", "zAcceleration", "xAcceleration"];
@@ -285,7 +367,7 @@ export class AnalyticsService {
       let targetLatest = 0;
 
       for (const p of params) {
-        const values = devLogs.map((l) => (l as any)[p] || 0);
+        const values = baselineLogs.map((l) => (l as any)[p] || 0);
         const sum = values.reduce((a, b) => a + b, 0);
         const mean = sum / values.length;
         const squareDiffs = values.map((v) => Math.pow(v - mean, 2));
@@ -309,7 +391,7 @@ export class AnalyticsService {
           deviceName: device.namaSensor,
           parameter: targetParam,
           deviation: parseFloat(maxZScore.toFixed(1)),
-          isAnomaly: Math.abs(maxZScore) >= 3.0,
+          isAnomaly: Math.abs(maxZScore) >= zThreshold,
         });
       }
     }
@@ -335,4 +417,3 @@ export class AnalyticsService {
     };
   }
 }
-

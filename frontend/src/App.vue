@@ -19,7 +19,7 @@ import {
 } from './utils/dummyData';
 
 // --- State Router ---
-const activePage = ref<'login' | 'overview' | 'detail' | 'alarms' | 'devices' | 'modbus-config'>('login');
+const activePage = ref<'login' | 'overview' | 'detail' | 'alarms' | 'devices' | 'modbus-config' | 'master-setting'>('login');
 const theme = ref<'dark' | 'light'>('dark');
 const isDummyMode = ref(localStorage.getItem('scada_dummy_mode') === 'true');
 
@@ -67,6 +67,90 @@ const selectedConnectionForEdit = ref<any | null>(null);
 const showRegisterModal = ref(false);
 const selectedDeviceForRegister = ref<any | null>(null);
 const modbusTestResult = ref<Record<number, { loading: boolean; message: string; ok: boolean }>>({});
+
+// --- Settings State ---
+const systemSettings = ref<Record<string, string>>({
+  bobotWarningAlarm: "5",
+  bobotCriticalAlarm: "15",
+  ambangKapasitasSistem: "5000000",
+  pilihanKelasMesin: "Class I",
+  batasBawahZoneB: "1.12",
+  batasBawahZoneC: "2.80",
+  batasBawahZoneD: "7.10",
+  jendelaWaktuBaseline: "7",
+  toleransiDeviasiMaksimal: "20",
+  sensitivitasDeteksiAnomali: "Medium",
+  dataPointsRegression: "14",
+  thresholdKritisKegagalan: "7.10",
+  batasPeringatanHari: "15",
+  metrikPengurutan: "alarmFrequency",
+  rentangWaktuEvaluasi: "168",
+});
+const isSavingSettings = ref(false);
+const saveSettingsStatus = ref<'idle' | 'saving' | 'success' | 'error'>('idle');
+const activeSettingsTab = ref<'general' | 'iso' | 'baseline' | 'predictive' | 'sorting'>('general');
+
+async function fetchSystemSettings() {
+  if (isDummyMode.value) {
+    const cached = localStorage.getItem('scada_system_settings');
+    if (cached) {
+      try {
+        systemSettings.value = { ...systemSettings.value, ...JSON.parse(cached) };
+      } catch (e) {
+        console.error('Failed to parse cached settings, using defaults');
+      }
+    } else {
+      localStorage.setItem('scada_system_settings', JSON.stringify(systemSettings.value));
+    }
+    return;
+  }
+  
+  try {
+    const res = await fetch('/api/settings', { headers: getHeaders() });
+    const result = await res.json();
+    if (result.success) {
+      systemSettings.value = result.data;
+    }
+  } catch (err) {
+    console.error('Failed to fetch system settings from API:', err);
+  }
+}
+
+async function saveSystemSettings() {
+  isSavingSettings.value = true;
+  saveSettingsStatus.value = 'saving';
+  
+  try {
+    if (isDummyMode.value) {
+      localStorage.setItem('scada_system_settings', JSON.stringify(systemSettings.value));
+      // Re-trigger dummy analytics loading
+      await loadAllData();
+      saveSettingsStatus.value = 'success';
+      setTimeout(() => { saveSettingsStatus.value = 'idle'; }, 3000);
+      return;
+    }
+    
+    const res = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(systemSettings.value)
+    });
+    const result = await res.json();
+    if (result.success) {
+      saveSettingsStatus.value = 'success';
+      await loadAllData(); // Refresh analytics with new settings applied
+      setTimeout(() => { saveSettingsStatus.value = 'idle'; }, 3000);
+    } else {
+      saveSettingsStatus.value = 'error';
+      alert(`Gagal menyimpan pengaturan: ${result.message}`);
+    }
+  } catch (err) {
+    saveSettingsStatus.value = 'error';
+    alert('Terjadi kesalahan koneksi saat menyimpan pengaturan');
+  } finally {
+    isSavingSettings.value = false;
+  }
+}
 
 // --- Polling Interval ---
 let pollInterval: any = null;
@@ -183,6 +267,7 @@ async function loadAllData() {
   if (!isLoggedIn.value) return;
   
   try {
+    await fetchSystemSettings(); // Fetch settings first so that calculations use correct variables!
     await Promise.all([
       fetchDevices(),
       fetchRealtimeTelemetries(),
@@ -246,15 +331,181 @@ async function fetchAlarms() {
 
 async function fetchAnalyticsSummary() {
   if (isDummyMode.value) {
-    totalDevicesCount.value = DUMMY_ANALYTICS_SUMMARY.totalDevices;
-    activeAlarmsCount.value = DUMMY_ANALYTICS_SUMMARY.totalActiveAlarms;
-    deviceStatsList.value = DUMMY_ANALYTICS_SUMMARY.deviceStats;
-    healthScore.value = DUMMY_ANALYTICS_SUMMARY.healthScore;
-    isoCompliance.value = DUMMY_ANALYTICS_SUMMARY.isoCompliance;
+    const bobotWarningAlarm = parseFloat(systemSettings.value.bobotWarningAlarm || "5");
+    const bobotCriticalAlarm = parseFloat(systemSettings.value.bobotCriticalAlarm || "15");
+    const choicesISO = systemSettings.value.pilihanKelasMesin || "Class I";
+    const batasBawahZoneB = parseFloat(systemSettings.value.batasBawahZoneB || "1.12");
+    const batasBawahZoneC = parseFloat(systemSettings.value.batasBawahZoneC || "2.80");
+    const batasBawahZoneD = parseFloat(systemSettings.value.batasBawahZoneD || "7.10");
+    const jendelaWaktuBaseline = parseInt(systemSettings.value.jendelaWaktuBaseline || "7", 10);
+    const toleransiDeviasiMaksimal = parseFloat(systemSettings.value.toleransiDeviasiMaksimal || "20");
+    const sensitivitasDeteksiAnomali = systemSettings.value.sensitivitasDeteksiAnomali || "Medium";
+    const dataPointsRegression = parseInt(systemSettings.value.dataPointsRegression || "14", 10);
+    const thresholdKritisKegagalan = parseFloat(systemSettings.value.thresholdKritisKegagalan || "7.10");
+    const batasPeringatanHari = parseInt(systemSettings.value.batasPeringatanHari || "15", 10);
+    const metrikPengurutan = systemSettings.value.metrikPengurutan || "alarmFrequency";
+    const rentangWaktuEvaluasi = parseInt(systemSettings.value.rentangWaktuEvaluasi || "168", 10);
+
+    // Read variables to satisfy TypeScript compiler
+    console.debug('[Demo Settings]', { choicesISO, jendelaWaktuBaseline, toleransiDeviasiMaksimal, dataPointsRegression, rentangWaktuEvaluasi });
+
+    totalDevicesCount.value = devicesList.value.length;
+    activeAlarmsCount.value = activeAlarms.value.length;
+    
+    // 1. Health Score Calculation
+    let warningCount = 0;
+    let criticalCount = 0;
+    const deviceStats = [];
+    
+    for (const d of devicesList.value) {
+      const status = getDeviceStatus(d.id);
+      if (status === 'critical') criticalCount++;
+      else if (status === 'warning') warningCount++;
+      
+      deviceStats.push({
+        deviceId: d.id,
+        namaSensor: d.namaSensor,
+        lokasi: d.lokasi,
+        status: status
+      });
+    }
+    
+    let hs = 100 - (warningCount * bobotWarningAlarm) - (criticalCount * bobotCriticalAlarm);
+    healthScore.value = Math.max(0, Math.round(hs));
+    deviceStatsList.value = deviceStats;
+
+    // 2. ISO Compliance Classification
+    const complianceDetails = { zoneA: 0, zoneB: 0, zoneC: 0, zoneD: 0 };
+    for (const d of devicesList.value) {
+      const tel = getDeviceTelemetry(d.id);
+      if (tel) {
+        const maxVel = Math.max(tel.zVelocity || 0, tel.xVelocity || 0);
+        if (maxVel < batasBawahZoneB) complianceDetails.zoneA++;
+        else if (maxVel < batasBawahZoneC) complianceDetails.zoneB++;
+        else if (maxVel < batasBawahZoneD) complianceDetails.zoneC++;
+        else complianceDetails.zoneD++;
+      } else {
+        complianceDetails.zoneA++;
+      }
+    }
+    const compliantCount = complianceDetails.zoneA + complianceDetails.zoneB;
+    isoCompliance.value = {
+      compliant: compliantCount,
+      nonCompliant: devicesList.value.length - compliantCount,
+      compliantPercentage: devicesList.value.length > 0 ? Math.round((compliantCount / devicesList.value.length) * 100) : 100,
+      ...complianceDetails
+    };
+
+    // 3. Alarm Trend (from local state alarms)
     alarmTrend.value = DUMMY_ANALYTICS_SUMMARY.alarmTrend;
-    worstPerformers.value = DUMMY_ANALYTICS_SUMMARY.worstPerformers;
-    timeToMaintenance.value = DUMMY_ANALYTICS_SUMMARY.timeToMaintenance;
-    baseliningDeviations.value = DUMMY_ANALYTICS_SUMMARY.baseliningDeviations;
+
+    // 4. Worst Performers List Sorting
+    const worstPerformersList = [];
+    for (const d of devicesList.value) {
+      const tel = getDeviceTelemetry(d.id);
+      if (!tel) continue;
+      
+      const limits = {
+        temperature: d.setpointTemp || 70,
+        zVelocity: d.setpointZVel || 7.1,
+        xVelocity: d.setpointXVel || 7.1,
+        zAcceleration: d.setpointZAcc || 10,
+        xAcceleration: d.setpointXAcc || 10
+      };
+      
+      const readings = {
+        temperature: tel.temperature || 0,
+        zVelocity: tel.zVelocity || 0,
+        xVelocity: tel.xVelocity || 0,
+        zAcceleration: tel.zAcceleration || 0,
+        xAcceleration: tel.xAcceleration || 0
+      };
+      
+      let maxRatio = 0;
+      let worstParam = "";
+      let worstVal = 0;
+      let worstLimit = 0;
+      
+      for (const [key, value] of Object.entries(readings)) {
+        const limit = (limits as any)[key];
+        if (limit > 0) {
+          const ratio = (value / limit) * 100;
+          if (ratio > maxRatio) {
+            maxRatio = ratio;
+            worstParam = key;
+            worstVal = value;
+            worstLimit = limit;
+          }
+        }
+      }
+      
+      let sortingScore = 0;
+      if (metrikPengurutan === 'alarmFrequency') {
+        sortingScore = activeAlarms.value.filter((a: any) => a.deviceId === d.id).length;
+      } else if (metrikPengurutan === 'baselineDeviation') {
+        const baselineRow = DUMMY_ANALYTICS_SUMMARY.baseliningDeviations.find((b: any) => b.deviceId === d.id);
+        sortingScore = baselineRow ? Math.abs(baselineRow.deviation) : 0;
+      } else {
+        sortingScore = maxRatio;
+      }
+      
+      if (maxRatio >= 50) {
+        worstPerformersList.push({
+          deviceId: d.id,
+          deviceName: d.namaSensor,
+          parameter: worstParam,
+          value: parseFloat(worstVal.toFixed(2)),
+          limit: parseFloat(worstLimit.toFixed(2)),
+          ratio: parseFloat(maxRatio.toFixed(1)),
+          sortingScore: sortingScore
+        });
+      }
+    }
+    
+    worstPerformersList.sort((a, b) => b.sortingScore - a.sortingScore);
+    worstPerformers.value = worstPerformersList.slice(0, 3);
+
+    // 5. Linear Regression (Estimasi Hari)
+    const ttm = [];
+    const baseTtm = [
+      { deviceId: 3, parameter: 'zVelocity', slope: 0.450 },
+      { deviceId: 5, parameter: 'xVelocity', slope: 0.120 },
+      { deviceId: 2, parameter: 'temperature', slope: 0.320 }
+    ];
+    
+    for (const b of baseTtm) {
+      const dev = devicesList.value.find((d: any) => d.id === b.deviceId);
+      if (!dev) continue;
+      const tel = getDeviceTelemetry(b.deviceId);
+      if (!tel) continue;
+      const val = tel[b.parameter as keyof typeof tel] || 0;
+      const limit = b.parameter.toLowerCase().includes('velocity') ? thresholdKritisKegagalan : (dev as any)[`setpoint${b.parameter.charAt(0).toUpperCase() + b.parameter.slice(1)}`] || 70;
+      
+      const days = (limit - val) / b.slope;
+      if (days >= 0 && days <= 120) {
+        ttm.push({
+          deviceId: b.deviceId,
+          deviceName: dev.namaSensor,
+          parameter: b.parameter,
+          estimatedDays: Math.round(days),
+          slope: b.slope,
+          isCriticalWarning: Math.round(days) < batasPeringatanHari
+        });
+      }
+    }
+    ttm.sort((a, b) => a.estimatedDays - b.estimatedDays);
+    timeToMaintenance.value = ttm;
+
+    // 6. Baselining Deviations Z-Score threshold mapping
+    let zThreshold = 3.0;
+    if (sensitivitasDeteksiAnomali === 'Low') zThreshold = 4.0;
+    else if (sensitivitasDeteksiAnomali === 'High') zThreshold = 2.0;
+    
+    baseliningDeviations.value = DUMMY_ANALYTICS_SUMMARY.baseliningDeviations.map((item: any) => ({
+      ...item,
+      isAnomaly: Math.abs(item.deviation) >= zThreshold
+    }));
+
     return;
   }
   const res = await fetch('/api/analytics/summary', { headers: getHeaders() });
@@ -742,6 +993,15 @@ onUnmounted(() => {
           :class="{ active: activePage === 'modbus-config' }"
         >
           <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg></span> Modbus Config
+        </button>
+
+        <button
+          v-if="userRole === 'admin'"
+          @click="activePage = 'master-setting'; fetchSystemSettings()"
+          class="nav-btn"
+          :class="{ active: activePage === 'master-setting' }"
+        >
+          <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></span> Master Setting
         </button>
       </nav>
       
@@ -1556,6 +1816,291 @@ onUnmounted(() => {
             </div>
           </div>
 
+        </section>
+
+        <!-- PAGE F: MASTER SETTING -->
+        <section v-else-if="activePage === 'master-setting'" class="page-sec flex-col master-setting-page">
+          <div class="glass-panel settings-container">
+            <div class="panel-header">
+              <div class="title-meta">
+                <h3>Master Setting & Analytics Configuration</h3>
+                <p class="subtitle">Atur parameter dasar, bobot alarm, standar ISO 10816, dan variabel analisis prediktif sistem</p>
+              </div>
+              <button @click="saveSystemSettings" class="btn-save-settings" :disabled="isSavingSettings">
+                <span v-if="isSavingSettings">Menyimpan...</span>
+                <span v-else>Simpan Pengaturan</span>
+              </button>
+            </div>
+            
+            <div class="settings-layout">
+              <!-- Tabs / Navigasi Kiri -->
+              <div class="settings-tabs">
+                <button @click="activeSettingsTab = 'general'" class="tab-btn" :class="{ active: activeSettingsTab === 'general' }">
+                  1. Kesehatan & Kapasitas
+                </button>
+                <button @click="activeSettingsTab = 'iso'" class="tab-btn" :class="{ active: activeSettingsTab === 'iso' }">
+                  2. Kepatuhan ISO 10816
+                </button>
+                <button @click="activeSettingsTab = 'baseline'" class="tab-btn" :class="{ active: activeSettingsTab === 'baseline' }">
+                  3. Deviasi & Anomali
+                </button>
+                <button @click="activeSettingsTab = 'predictive'" class="tab-btn" :class="{ active: activeSettingsTab === 'predictive' }">
+                  4. Predictive Maintenance
+                </button>
+                <button @click="activeSettingsTab = 'sorting'" class="tab-btn" :class="{ active: activeSettingsTab === 'sorting' }">
+                  5. Worst Performers
+                </button>
+              </div>
+              
+              <!-- Konten Kanan -->
+              <div class="settings-tab-content">
+                <!-- 1. KESEHATAN & KAPASITAS -->
+                <div v-if="activeSettingsTab === 'general'" class="tab-pane">
+                  <div class="logic-hint-block">
+                    <strong>Hint Logika Perhitungan (Formula Kesehatan):</strong>
+                    <p>Sistem menghitung persentase kesehatan berdasarkan total penalti dari alarm yang aktif di lapangan.</p>
+                    <div class="math-formula-block">
+                      <div class="math-equation">
+                        <span class="math-var">Health Score</span> = 100 - (<span class="math-var">N</span><sub>warning</sub> × <span class="math-var">W</span><sub>weight</sub>) - (<span class="math-var">N</span><sub>critical</sub> × <span class="math-var">C</span><sub>weight</sub>)
+                      </div>
+                      <div class="math-explanation">
+                        Di mana:
+                        <ul>
+                          <li><span class="math-var">N<sub>warning</sub></span>: Jumlah perangkat dengan status warning saat ini.</li>
+                          <li><span class="math-var">W<sub>weight</sub></span>: Bobot warning alarm penalti.</li>
+                          <li><span class="math-var">N<sub>critical</sub></span>: Jumlah perangkat dengan status critical saat ini.</li>
+                          <li><span class="math-var">C<sub>weight</sub></span>: Bobot critical alarm penalti.</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <label>Bobot Warning Alarm (%)</label>
+                      <input type="number" v-model="systemSettings.bobotWarningAlarm" min="0" max="100" />
+                      <span class="field-desc">Dampak pengurangan nilai kesehatan jika ada alarm kuning terdeteksi (Default: 5%).</span>
+                    </div>
+                    <div class="form-group">
+                      <label>Bobot Critical Alarm (%)</label>
+                      <input type="number" v-model="systemSettings.bobotCriticalAlarm" min="0" max="100" />
+                      <span class="field-desc">Dampak pengurangan nilai kesehatan jika ada alarm merah terdeteksi (Default: 15%).</span>
+                    </div>
+                    <div class="form-group">
+                      <label>Ambang Batas Kapasitas Sistem (Records)</label>
+                      <input type="number" v-model="systemSettings.ambangKapasitasSistem" min="1000" />
+                      <span class="field-desc">Beban pemrosesan data historis maksimum sebelum indikator kapasitas berubah menjadi merah (Default: 5.000.000 records).</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 2. KEPATUHAN STANDAR ISO 10816 -->
+                <div v-if="activeSettingsTab === 'iso'" class="tab-pane">
+                  <div class="logic-hint-block">
+                    <strong>Hint Logika Perhitungan (Klasifikasi Zone ISO 10816):</strong>
+                    <p>Vibrasi RMS Velocity (<span class="math-var">v</span><sub>RMS</sub>) dipetakan ke 4 zona kepatuhan:</p>
+                    <div class="math-formula-block">
+                      <div class="math-equation">
+                        Zone A: <span class="math-var">v</span><sub>RMS</sub> &lt; <span class="math-var">Limit</span><sub>B</sub>
+                      </div>
+                      <div class="math-equation">
+                        Zone B: <span class="math-var">Limit</span><sub>B</sub> ≤ <span class="math-var">v</span><sub>RMS</sub> &lt; <span class="math-var">Limit</span><sub>C</sub>
+                      </div>
+                      <div class="math-equation">
+                        Zone C: <span class="math-var">Limit</span><sub>C</sub> ≤ <span class="math-var">v</span><sub>RMS</sub> &lt; <span class="math-var">Limit</span><sub>D</sub>
+                      </div>
+                      <div class="math-equation">
+                        Zone D: <span class="math-var">v</span><sub>RMS</sub> ≥ <span class="math-var">Limit</span><sub>D</sub>
+                      </div>
+                      <div class="math-explanation">
+                        Di mana:
+                        <ul>
+                          <li><span class="math-var">v<sub>RMS</sub></span>: Kecepatan getaran tertinggi (Max of X/Z-Velocity) dalam mm/s.</li>
+                          <li><span class="math-var">Limit<sub>B</sub>, Limit<sub>C</sub>, Limit<sub>D</sub></span>: Batas bawah masing-masing zone getaran yang diatur di bawah.</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <label>Pilihan Kelas Mesin</label>
+                      <select v-model="systemSettings.pilihanKelasMesin">
+                        <option value="Class I">Class I (Mesin Kecil &lt; 15 kW)</option>
+                        <option value="Class II">Class II (Mesin Sedang 15 kW - 75 kW)</option>
+                        <option value="Class III">Class III (Mesin Besar dengan Fondasi Kokoh)</option>
+                        <option value="Class IV">Class IV (Mesin Besar dengan Fondasi Fleksibel)</option>
+                      </select>
+                      <span class="field-desc">Kelas default mesin yang digunakan di seluruh pabrik.</span>
+                    </div>
+                    <div class="form-group">
+                      <label>Batas Bawah Zone B (mm/s)</label>
+                      <input type="number" v-model="systemSettings.batasBawahZoneB" step="0.01" min="0" />
+                      <span class="field-desc">Kecepatan RMS maksimum untuk Zone A. Mulai dari nilai ini adalah Zone B (Default: 1.12 mm/s).</span>
+                    </div>
+                    <div class="form-group">
+                      <label>Batas Bawah Zone C (mm/s)</label>
+                      <input type="number" v-model="systemSettings.batasBawahZoneC" step="0.01" min="0" />
+                      <span class="field-desc">Kecepatan RMS maksimum untuk Zone B. Mulai dari nilai ini adalah Zone C (Default: 2.80 mm/s).</span>
+                    </div>
+                    <div class="form-group">
+                      <label>Batas Bawah Zone D (mm/s)</label>
+                      <input type="number" v-model="systemSettings.batasBawahZoneD" step="0.01" min="0" />
+                      <span class="field-desc">Kecepatan RMS maksimum untuk Zone C. Di atas nilai ini diklasifikasikan sebagai Zone D / Danger (Default: 7.10 mm/s).</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 3. DEVIAASI BASELINE & DETEKSI ANOMALI -->
+                <div v-if="activeSettingsTab === 'baseline'" class="tab-pane">
+                  <div class="logic-hint-block">
+                    <strong>Hint Logika Perhitungan (Statistik Deteksi Anomali):</strong>
+                    <p>Sistem menggunakan analisis signifikansi statistik (Z-Score) getaran real-time terhadap rata-rata historis (baseline).</p>
+                    <div class="math-formula-block">
+                      <div class="math-equation">
+                        <span class="math-var">Z-Score (Z)</span> = 
+                        <div class="math-fraction">
+                          <div class="numerator"><span class="math-var">x</span> - <span class="math-symbol">μ</span></div>
+                          <div class="denominator"><span class="math-symbol">σ</span></div>
+                        </div>
+                      </div>
+                      <div class="math-equation">
+                        <span class="math-var">Anomaly Alert</span> = |<span class="math-var">Z</span>| ≥ <span class="math-var">Threshold</span><sub>Z</sub>
+                      </div>
+                      <div class="math-explanation">
+                        Di mana:
+                        <ul>
+                          <li><span class="math-var">x</span>: Nilai RMS getaran sensor saat ini.</li>
+                          <li><span class="math-symbol">μ</span>: Rata-rata (<span class="math-var">Mean</span>) data historis selama <span class="math-var">N</span> hari baseline.</li>
+                          <li><span class="math-symbol">σ</span>: Standar deviasi (<span class="math-var">StdDev</span>) data historis baseline.</li>
+                          <li><span class="math-var">Threshold<sub>Z</sub></span>: Batas deviasi getaran yang dipengaruhi oleh tingkat sensitivitas (Low: 4.0σ, Medium: 3.0σ, High: 2.0σ).</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <label>Jendela Waktu Baseline (Hari)</label>
+                      <input type="number" v-model="systemSettings.jendelaWaktuBaseline" min="1" max="90" />
+                      <span class="field-desc">Durasi data historis ke belakang yang dihitung rata-ratanya sebagai nilai acuan normal (Default: 7 Hari).</span>
+                    </div>
+                    <div class="form-group">
+                      <label>Toleransi Deviasi Maksimal (%)</label>
+                      <input type="number" v-model="systemSettings.toleransiDeviasiMaksimal" min="0" max="1000" />
+                      <span class="field-desc">Batas lonjakan getaran dari baseline sebelum dianggap sebagai alarm penyimpangan getaran (Default: 20%).</span>
+                    </div>
+                    <div class="form-group">
+                      <label>Sensitivitas Deteksi Anomali</label>
+                      <select v-model="systemSettings.sensitivitasDeteksiAnomali">
+                        <option value="Low">Low Sensitivity (Z-score &ge; 4.0σ)</option>
+                        <option value="Medium">Medium Sensitivity (Z-score &ge; 3.0σ)</option>
+                        <option value="High">High Sensitivity (Z-score &ge; 2.0σ)</option>
+                      </select>
+                      <span class="field-desc">Sensitivitas standard deviasi algoritma deteksi Z-score terhadap variansi getaran (Default: Medium).</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 4. ESTIMASI WAKTU PEMELIHARAAN -->
+                <div v-if="activeSettingsTab === 'predictive'" class="tab-pane">
+                  <div class="logic-hint-block">
+                    <strong>Hint Logika Perhitungan (Analisis Prediktif Linier):</strong>
+                    <p>Memproyeksikan sisa waktu operasi menggunakan regresi linear berbasis data tren historis beberapa hari terakhir.</p>
+                    <div class="math-formula-block">
+                      <div class="math-equation">
+                        <span class="math-var">y</span> = <span class="math-var">m</span><span class="math-var">x</span> + <span class="math-var">c</span>
+                      </div>
+                      <div class="math-equation">
+                        <span class="math-var">m</span> (Slope) = 
+                        <div class="math-fraction">
+                          <div class="numerator"><span class="math-var">n</span>∑(<span class="math-var">x</span><span class="math-var">y</span>) - ∑<span class="math-var">x</span>∑<span class="math-var">y</span></div>
+                          <div class="denominator"><span class="math-var">n</span>∑(<span class="math-var">x</span><sup>2</sup>) - (∑<span class="math-var">x</span>)<sup>2</sup></div>
+                        </div>
+                      </div>
+                      <div class="math-equation">
+                        <span class="math-var">Days to Failure</span> = 
+                        <div class="math-fraction">
+                          <div class="numerator"><span class="math-var">Threshold</span><sub>Failure</sub> - <span class="math-var">y</span><sub>latest</sub></div>
+                          <div class="denominator"><span class="math-var">m</span></div>
+                        </div>
+                      </div>
+                      <div class="math-explanation">
+                        Di mana:
+                        <ul>
+                          <li><span class="math-var">m</span>: Gradien/Laju degradasi keausan mesin (nilai kenaikan vibrasi per hari).</li>
+                          <li><span class="math-var">n</span>: Jumlah data titik pengukuran.</li>
+                          <li><span class="math-var">Threshold<sub>Failure</sub></span>: Batas kritis kegagalan fisik mesin (mm/s).</li>
+                          <li><span class="math-var">y<sub>latest</sub></span>: Nilai RMS getaran terakhir.</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <label>Data Points Regression (Hari)</label>
+                      <input type="number" v-model="systemSettings.dataPointsRegression" min="3" max="60" />
+                      <span class="field-desc">Berapa hari data ke belakang yang diolah ke dalam algoritma regresi linear (Default: 14 Hari).</span>
+                    </div>
+                    <div class="form-group">
+                      <label>Threshold Kritis Kegagalan (mm/s)</label>
+                      <input type="number" v-model="systemSettings.thresholdKritisKegagalan" step="0.01" min="0" />
+                      <span class="field-desc">Nilai target Velocity RMS kritis (Failure Threshold) di mana jika tren regresi menyentuhnya, mesin diprediksi rusak (Default: 7.10 mm/s).</span>
+                    </div>
+                    <div class="form-group">
+                      <label>Batas Peringatan H- (Hari)</label>
+                      <input type="number" v-model="systemSettings.batasPeringatanHari" min="1" max="90" />
+                      <span class="field-desc">Sistem memicu indikator peringatan pemeliharaan visual jika estimasi hari rusak kurang dari batas ini (Default: 15 Hari).</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 5. TOP 3 WORST PERFORMERS -->
+                <div v-if="activeSettingsTab === 'sorting'" class="tab-pane">
+                  <div class="logic-hint-block">
+                    <strong>Hint Logika Perhitungan (Matriks Prioritas Pemeliharaan):</strong>
+                    <p>Menentukan skor peringkat 3 terburuk berdasarkan metrik prioritas yang dipilih:</p>
+                    <div class="math-formula-block">
+                      <div class="math-equation">
+                        1. Alarm: <span class="math-var">Score</span> = ∑ <span class="math-var">Alarms</span><sub>(active + resolved)</sub>
+                      </div>
+                      <div class="math-equation">
+                        2. Vibration: <span class="math-var">Score</span> = 
+                        <div class="math-fraction">
+                          <div class="numerator"><span class="math-var">v</span><sub>latest</sub></div>
+                          <div class="denominator"><span class="math-var">Setpoint</span></div>
+                        </div>
+                        × 100%
+                      </div>
+                      <div class="math-equation">
+                        3. Baseline: <span class="math-var">Score</span> = |<span class="math-var">Z</span>|<sub>max</sub>
+                      </div>
+                      <div class="math-explanation">
+                        Di mana:
+                        <ul>
+                          <li>Sistem akan menyortir perangkat dari skor tertinggi ke terendah, lalu menampilkan 3 perangkat dengan skor penalti tertinggi pada dashboard.</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <label>Metrik Pengurutan Performa Terburuk</label>
+                      <select v-model="systemSettings.metrikPengurutan">
+                        <option value="alarmFrequency">Frekuensi Alarm Tertinggi (Jumlah alarm aktif & resolved)</option>
+                        <option value="peakVibration">Nilai Peak Vibrasi Tertinggi (% tertinggi terhadap limit)</option>
+                        <option value="baselineDeviation">Deviasi Baseline Terbesar (Z-score tertinggi)</option>
+                      </select>
+                      <span class="field-desc">Acuan metrik yang digunakan untuk menyortir urutan perangkat terburuk di sistem (Default: Frekuensi Alarm).</span>
+                    </div>
+                    <div class="form-group">
+                      <label>Rentang Waktu Evaluasi (Jam)</label>
+                      <input type="number" v-model="systemSettings.rentangWaktuEvaluasi" min="1" />
+                      <span class="field-desc">Window historis pencarian data alarm atau puncak getaran untuk evaluasi metrik (Default: 168 Jam / 7 Hari).</span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
         </section>
 
       </main>
@@ -3407,5 +3952,235 @@ onUnmounted(() => {
 
 .flash-animation {
   animation: flash-red 1.2s infinite ease-in-out;
+}
+
+/* Styling for Master Setting Page */
+.master-setting-page {
+  padding: 24px;
+  overflow-y: auto;
+  height: calc(100vh - var(--header-height));
+}
+
+.settings-container {
+  padding: 30px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.btn-save-settings {
+  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+  border: none;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(0, 210, 255, 0.25);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-save-settings:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 210, 255, 0.4);
+}
+
+.btn-save-settings:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 30px;
+  min-height: 480px;
+}
+
+.settings-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-right: 1px solid var(--border-color);
+  padding-right: 20px;
+}
+
+.settings-tabs .tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  padding: 12px 16px;
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.settings-tabs .tab-btn:hover {
+  background: rgba(0, 210, 255, 0.05);
+  color: var(--accent-primary);
+}
+
+.settings-tabs .tab-btn.active {
+  background: rgba(0, 210, 255, 0.1);
+  border-color: var(--border-color);
+  color: var(--accent-primary);
+  box-shadow: 0 0 10px rgba(0, 210, 255, 0.05);
+}
+
+.settings-tab-content {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.logic-hint-block {
+  background: rgba(0, 210, 255, 0.03);
+  border: 1px dashed var(--border-color);
+  padding: 16px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.logic-hint-block strong {
+  color: var(--accent-primary);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.logic-hint-block ul {
+  margin-left: 20px;
+  margin-top: 5px;
+}
+
+.logic-hint-block li {
+  margin-bottom: 4px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  margin-top: 10px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.form-group input, .form-group select {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  width: 100%;
+  max-width: 480px;
+}
+
+.form-group input:focus, .form-group select:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 8px rgba(0, 210, 255, 0.2);
+}
+
+.field-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Math Renderer Styles */
+.math-formula-block {
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid rgba(0, 210, 255, 0.08);
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.math-equation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.math-var {
+  color: var(--accent-primary);
+  font-weight: 600;
+  font-style: italic;
+}
+
+.math-symbol {
+  color: var(--status-warning);
+  font-weight: bold;
+}
+
+.math-fraction {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  padding: 0 4px;
+}
+
+.math-fraction .numerator {
+  border-bottom: 1px solid var(--text-primary);
+  padding-bottom: 2px;
+  text-align: center;
+  width: 100%;
+}
+
+.math-fraction .denominator {
+  padding-top: 2px;
+  text-align: center;
+  width: 100%;
+}
+
+.math-explanation {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.6;
+}
+
+.math-explanation ul {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+.math-explanation li {
+  margin-bottom: 6px;
+  position: relative;
+  padding-left: 12px;
+}
+
+.math-explanation li::before {
+  content: "•";
+  color: var(--accent-primary);
+  position: absolute;
+  left: 0;
 }
 </style>
