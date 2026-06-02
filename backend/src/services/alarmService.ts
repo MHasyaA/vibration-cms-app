@@ -85,34 +85,19 @@ export class AlarmService {
     const triggeredAlarms = [];
 
     for (const breach of breaches) {
-      // Avoid duplicate active alarms of the same parameter on the same device
-      const [existingActive] = await db
-        .select()
-        .from(alarms)
-        .where(
-          and(
-            eq(alarms.deviceId, deviceId),
-            eq(alarms.parameter, breach.parameter),
-            eq(alarms.status, "active")
-          )
-        )
-        .limit(1);
-
-      if (!existingActive) {
-        const [newAlarm] = await db
-          .insert(alarms)
-          .values({
-            deviceId,
-            parameter: breach.parameter,
-            value: breach.value,
-            threshold: breach.threshold,
-            status: "active",
-          })
-          .returning();
-        
-        triggeredAlarms.push(newAlarm);
-        console.log(`[ALARM TRIGGERED] Device ID ${deviceId} breached ${breach.parameter}: ${breach.value} > ${breach.threshold}`);
-      }
+      const [newAlarm] = await db
+        .insert(alarms)
+        .values({
+          deviceId,
+          parameter: breach.parameter,
+          value: breach.value,
+          threshold: breach.threshold,
+          status: "active",
+        })
+        .returning();
+      
+      triggeredAlarms.push(newAlarm);
+      console.log(`[ALARM TRIGGERED] Device ID ${deviceId} breached ${breach.parameter}: ${breach.value} > ${breach.threshold}`);
     }
 
     return triggeredAlarms;
