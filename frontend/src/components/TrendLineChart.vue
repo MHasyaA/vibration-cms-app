@@ -224,7 +224,7 @@ const chartOptions = computed(() => {
   const chartTheme = (isDark ? 'dark' : 'light') as 'dark' | 'light';
   const gridColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
   const labelColor = isDark ? '#94a3b8' : '#475569';
-  const accentColors = ['#00d2ff'];
+  const accentColors = ['#0052cc'];
 
   return {
     chart: {
@@ -448,11 +448,19 @@ h3 {
   background: var(--bg-input);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-family: 'Outfit', sans-serif;
-  font-size: 0.85rem;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
   outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.range-select:hover {
+  background: var(--bg-input-hover);
+  border-color: var(--border-hover);
 }
 
 .custom-range-inputs {
@@ -465,50 +473,59 @@ h3 {
   background: var(--bg-input);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-family: 'Outfit', sans-serif;
-  font-size: 0.8rem;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.78rem;
   outline: none;
+  transition: border-color 0.2s;
+}
+
+.range-date:focus {
+  border-color: var(--accent-primary);
 }
 
 .btn-apply {
-  background: var(--accent-cyan);
+  background: var(--accent-primary);
   color: white;
   border: none;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-family: 'Outfit', sans-serif;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-family: 'Poppins', sans-serif;
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.2s, transform 0.15s;
 }
 
 .btn-apply:hover {
-  filter: brightness(1.1);
+  background: var(--accent-hover);
+}
+
+.btn-apply:active {
+  transform: scale(0.97);
 }
 
 .btn-export {
   background: var(--bg-panel-solid);
-  color: var(--text-primary);
+  color: var(--text-secondary);
   border: 1px solid var(--border-color);
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-family: 'Outfit', sans-serif;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-family: 'Poppins', sans-serif;
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 6px;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
 }
 
 .btn-export:hover:not(:disabled) {
-  background: var(--bg-input);
-  color: var(--accent-cyan);
-  border-color: var(--accent-cyan);
+  background: var(--accent-light);
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
 }
 
 .btn-export:disabled {

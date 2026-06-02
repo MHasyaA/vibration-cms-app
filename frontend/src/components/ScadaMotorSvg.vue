@@ -197,12 +197,12 @@ const tempColor = computed(() => {
   opacity: 0;
 }
 
-/* Smoke color and intensity by status */
+/* Smoke color and intensity by status (darker charcoal industrial smoke) */
 .smoke-critical .smoke-puff {
-  background: radial-gradient(circle, rgba(180, 180, 180, 0.85) 0%, rgba(120, 120, 120, 0) 70%);
+  background: radial-gradient(circle, rgba(40, 40, 40, 0.92) 0%, rgba(20, 20, 20, 0) 70%);
 }
 .smoke-warning .smoke-puff {
-  background: radial-gradient(circle, rgba(200, 200, 200, 0.55) 0%, rgba(150, 150, 150, 0) 70%);
+  background: radial-gradient(circle, rgba(90, 90, 90, 0.7) 0%, rgba(40, 40, 40, 0) 70%);
 }
 
 /* Each puff: different size, position, delay */
