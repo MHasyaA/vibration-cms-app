@@ -868,8 +868,11 @@ function stopPolling() {
 // Handle Detail Sensor click from Sidebar/Overview
 async function selectDevice(deviceId: number) {
   selectedDeviceId.value = deviceId;
+  const wasAlreadyDetail = activePage.value === 'detail';
   activePage.value = 'detail';
-  await fetchHistoricalTrend(deviceId);
+  if (wasAlreadyDetail) {
+    await fetchHistoricalTrend(deviceId);
+  }
 }
 
 onMounted(async () => {
