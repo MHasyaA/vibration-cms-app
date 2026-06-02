@@ -60,8 +60,9 @@ export class SettingsService {
     }
   }
 
-  async updateSettings(newSettings: Record<string, string>): Promise<void> {
-    for (const [key, value] of Object.entries(newSettings)) {
+  async updateSettings(newSettings: Record<string, string | number>): Promise<void> {
+    for (const [key, rawValue] of Object.entries(newSettings)) {
+      const value = String(rawValue);
       // Upsert value
       await db
         .insert(systemSettings)

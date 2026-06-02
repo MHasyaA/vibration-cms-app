@@ -50,6 +50,6 @@ export const settingsController = new Elysia({ prefix: "/settings" })
     },
     {
       beforeHandle: (c: any) => checkAdmin(c),
-      body: t.Record(t.String(), t.String()),
+      body: t.Record(t.String(), t.Union([t.String(), t.Number()])),
     }
   );
