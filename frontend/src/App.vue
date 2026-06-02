@@ -46,7 +46,39 @@ const deviceStatsList = ref<any[]>([]);
 // Advanced Analytics State
 const healthScore = ref(100);
 const isoCompliance = ref<any>({ compliant: 0, nonCompliant: 0, compliantPercentage: 100, zoneA: 0, zoneB: 0, zoneC: 0, zoneD: 0 });
-const alarmTrend = ref<any>({ percentage: 0, history: [] });
+const alarmTrend = computed(() => {
+  const allAlarms = [...activeAlarms.value, ...alarmHistory.value];
+  const history = [];
+  const now = new Date();
+  
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+    const dateStr = d.toISOString().substring(0, 10);
+    
+    const count = allAlarms.filter((a: any) => {
+      const aDate = new Date(a.timestamp).toISOString().substring(0, 10);
+      return aDate === dateStr;
+    }).length;
+    
+    history.push({ date: dateStr, count });
+  }
+  
+  const currentTotal = history.reduce((sum, item) => sum + item.count, 0);
+  
+  const prevStart = new Date(now.getTime() - 13 * 24 * 60 * 60 * 1000);
+  const prevEnd = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  
+  const previousTotal = allAlarms.filter((a: any) => {
+    const aTime = new Date(a.timestamp).getTime();
+    return aTime >= prevStart.getTime() && aTime < prevEnd.getTime();
+  }).length;
+  
+  const percentage = previousTotal === 0 
+    ? (currentTotal > 0 ? 100 : 0) 
+    : Math.round(((currentTotal - previousTotal) / previousTotal) * 100);
+    
+  return { percentage, history };
+});
 const worstPerformers = ref<any[]>([]);
 const timeToMaintenance = ref<any[]>([]);
 const baseliningDeviations = ref<any[]>([]);
@@ -54,6 +86,61 @@ const baseliningDeviations = ref<any[]>([]);
 // Trend Filter State
 const trendStart = ref<string | undefined>(undefined);
 const trendEnd = ref<string | undefined>(undefined);
+
+// --- Alarm Filter State ---
+const alarmFilterDevice = ref<string>('all');
+const alarmFilterParam = ref<string>('all');
+const alarmFilterStartDate = ref<string>('');
+const alarmFilterEndDate = ref<string>('');
+
+// Computed properties for filtering alarms
+const filteredActiveAlarms = computed(() => {
+  return activeAlarms.value.filter(alarm => {
+    if (alarmFilterDevice.value !== 'all') {
+      const devName = alarm.deviceName || '';
+      if (devName !== alarmFilterDevice.value) return false;
+    }
+    if (alarmFilterParam.value !== 'all') {
+      const p = alarm.parameter || '';
+      if (p.toLowerCase().replace(/\s+/g, '') !== alarmFilterParam.value.toLowerCase().replace(/\s+/g, '')) return false;
+    }
+    if (alarmFilterStartDate.value) {
+      const start = new Date(alarmFilterStartDate.value).getTime();
+      const alarmTime = new Date(alarm.timestamp).getTime();
+      if (alarmTime < start) return false;
+    }
+    if (alarmFilterEndDate.value) {
+      const end = new Date(alarmFilterEndDate.value).getTime();
+      const alarmTime = new Date(alarm.timestamp).getTime();
+      if (alarmTime > end) return false;
+    }
+    return true;
+  });
+});
+
+const filteredAlarmHistory = computed(() => {
+  return alarmHistory.value.filter(alarm => {
+    if (alarmFilterDevice.value !== 'all') {
+      const devName = alarm.deviceName || '';
+      if (devName !== alarmFilterDevice.value) return false;
+    }
+    if (alarmFilterParam.value !== 'all') {
+      const p = alarm.parameter || '';
+      if (p.toLowerCase().replace(/\s+/g, '') !== alarmFilterParam.value.toLowerCase().replace(/\s+/g, '')) return false;
+    }
+    if (alarmFilterStartDate.value) {
+      const start = new Date(alarmFilterStartDate.value).getTime();
+      const alarmTime = new Date(alarm.timestamp).getTime();
+      if (alarmTime < start) return false;
+    }
+    if (alarmFilterEndDate.value) {
+      const end = new Date(alarmFilterEndDate.value).getTime();
+      const alarmTime = new Date(alarm.timestamp).getTime();
+      if (alarmTime > end) return false;
+    }
+    return true;
+  });
+});
 
 // --- Modals State ---
 const showDeviceModal = ref(false);
@@ -387,8 +474,7 @@ async function fetchAnalyticsSummary() {
       ...complianceDetails
     };
 
-    // 3. Alarm Trend (from local state alarms)
-    alarmTrend.value = DUMMY_ANALYTICS_SUMMARY.alarmTrend;
+    // 3. Alarm Trend is computed dynamically from active and historical alarms
 
     // 4. Worst Performers List Sorting
     const worstPerformersList = [];
@@ -507,7 +593,7 @@ async function fetchAnalyticsSummary() {
     deviceStatsList.value = result.data.deviceStats;
     healthScore.value = result.data.healthScore ?? 100;
     isoCompliance.value = result.data.isoCompliance ?? { compliant: 0, nonCompliant: 0, compliantPercentage: 100, zoneA: 0, zoneB: 0, zoneC: 0, zoneD: 0 };
-    alarmTrend.value = result.data.alarmTrend ?? { percentage: 0, history: [] };
+    // alarmTrend is computed dynamically on the frontend
     worstPerformers.value = result.data.worstPerformers ?? [];
     timeToMaintenance.value = result.data.timeToMaintenance ?? [];
     baseliningDeviations.value = result.data.baseliningDeviations ?? [];
@@ -868,8 +954,11 @@ function stopPolling() {
 // Handle Detail Sensor click from Sidebar/Overview
 async function selectDevice(deviceId: number) {
   selectedDeviceId.value = deviceId;
+  const wasAlreadyDetail = activePage.value === 'detail';
   activePage.value = 'detail';
-  await fetchHistoricalTrend(deviceId);
+  if (wasAlreadyDetail) {
+    await fetchHistoricalTrend(deviceId);
+  }
 }
 
 onMounted(async () => {
@@ -1505,13 +1594,61 @@ onUnmounted(() => {
 
         <!-- PAGE C: LOG ALARM -->
         <section v-else-if="activePage === 'alarms'" class="page-sec flex-col">
+          
+          <!-- Modern Outlined Alarm Filter Panel -->
+          <div class="glass-panel alarm-filter-panel" style="padding: 18px 24px; display: flex; flex-direction: column; gap: 14px; border-radius: var(--radius-lg); border: 1px solid var(--border-color); background: var(--bg-panel); margin-bottom: 8px;">
+            <div class="filter-header" style="font-size: 0.75rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.8px;">
+              Penyaringan Log Alarm (Real-time Filter)
+            </div>
+            <div class="filter-inputs" style="display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end;">
+              <!-- 1. Objek Sensor Filter -->
+              <div class="filter-group" style="display: flex; flex-direction: column; gap: 6px; flex: 1.2; min-width: 180px;">
+                <label style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px;">Objek Sensor</label>
+                <select v-model="alarmFilterDevice" style="background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-md); font-size: 0.8rem; font-weight: 600; outline: none; width: 100%; transition: border-color 0.2s;">
+                  <option value="all">Semua Sensor</option>
+                  <option v-for="d in devicesList" :key="d.id" :value="d.namaSensor">{{ d.namaSensor }}</option>
+                </select>
+              </div>
+
+              <!-- 2. Parameter Filter -->
+              <div class="filter-group" style="display: flex; flex-direction: column; gap: 6px; flex: 1.2; min-width: 180px;">
+                <label style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px;">Parameter</label>
+                <select v-model="alarmFilterParam" style="background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-md); font-size: 0.8rem; font-weight: 600; outline: none; width: 100%; transition: border-color 0.2s;">
+                  <option value="all">Semua Parameter</option>
+                  <option value="temperature">Temperature</option>
+                  <option value="velocity z">Velocity Z</option>
+                  <option value="velocity x">Velocity X</option>
+                  <option value="acceleration z">Acceleration Z</option>
+                  <option value="acceleration x">Acceleration X</option>
+                </select>
+              </div>
+
+              <!-- 3. Mulai Tanggal -->
+              <div class="filter-group" style="display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 150px;">
+                <label style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px;">Dari Tanggal</label>
+                <input type="date" v-model="alarmFilterStartDate" style="background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 7px 12px; border-radius: var(--radius-md); font-size: 0.8rem; outline: none; width: 100%;" />
+              </div>
+
+              <!-- 4. Selesai Tanggal -->
+              <div class="filter-group" style="display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 150px;">
+                <label style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px;">Sampai Tanggal</label>
+                <input type="date" v-model="alarmFilterEndDate" style="background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 7px 12px; border-radius: var(--radius-md); font-size: 0.8rem; outline: none; width: 100%;" />
+              </div>
+
+              <!-- 5. Reset Button -->
+              <button @click="alarmFilterDevice = 'all'; alarmFilterParam = 'all'; alarmFilterStartDate = ''; alarmFilterEndDate = '';" style="background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); padding: 8px 16px; border-radius: var(--radius-md); font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all 0.2s; height: 36px; display: flex; align-items: center; justify-content: center; gap: 4px;" onmouseover="this.style.background='rgba(9,30,66,0.04)'; this.style.color='var(--text-primary)'" onmouseout="this.style.background='transparent'; this.style.color='var(--text-secondary)'">
+                Reset
+              </button>
+            </div>
+          </div>
+
           <div class="alarm-view-layout">
             <!-- Active Alarms Card -->
             <div class="glass-panel table-panel">
               <div class="panel-header">
                 <h3>Alarm Aktif (Butuh Konfirmasi)</h3>
-                <span class="alarm-badge critical" v-if="activeAlarms.length > 0">
-                  {{ activeAlarms.length }} KRITIS
+                <span class="alarm-badge critical" v-if="filteredActiveAlarms.length > 0">
+                  {{ filteredActiveAlarms.length }} KRITIS
                 </span>
               </div>
               
@@ -1528,10 +1665,10 @@ onUnmounted(() => {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-if="activeAlarms.length === 0">
-                      <td colspan="6" class="empty-row">Kondisi sistem aman. Tidak ada alarm aktif.</td>
+                    <tr v-if="filteredActiveAlarms.length === 0">
+                      <td colspan="6" class="empty-row">Tidak ada alarm aktif yang cocok dengan penyaringan.</td>
                     </tr>
-                    <tr v-for="a in activeAlarms" :key="a.id" class="alarm-row critical">
+                    <tr v-for="a in filteredActiveAlarms" :key="a.id" class="alarm-row critical">
                       <td>{{ formatDate(a.timestamp) }}</td>
                       <td><strong>{{ a.deviceName || ('Device ID: ' + a.deviceId) }}</strong></td>
                       <td class="text-mono">{{ a.parameter }}</td>
@@ -1567,10 +1704,10 @@ onUnmounted(() => {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-if="alarmHistory.length === 0">
-                      <td colspan="6" class="empty-row">Belum ada riwayat alarm terdahulu.</td>
+                    <tr v-if="filteredAlarmHistory.length === 0">
+                      <td colspan="6" class="empty-row">Belum ada riwayat alarm yang cocok dengan penyaringan.</td>
                     </tr>
-                    <tr v-for="a in alarmHistory" :key="a.id">
+                    <tr v-for="a in filteredAlarmHistory" :key="a.id">
                       <td>{{ formatDate(a.timestamp) }}</td>
                       <td>{{ a.deviceName || ('Device ID: ' + a.deviceId) }}</td>
                       <td class="text-mono">{{ a.parameter }}</td>

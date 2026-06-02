@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import apexchart from 'vue3-apexcharts';
 
 const props = defineProps<{
@@ -282,6 +282,10 @@ const chartOptions = computed(() => {
       labels: { colors: labelColor },
     },
   };
+});
+
+onMounted(() => {
+  applyDateRange();
 });
 </script>
 
