@@ -76,7 +76,7 @@ const displaySetpoint = computed(() => {
   padding: 12px 16px;
   position: relative;
   overflow: hidden;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.25s ease;
 }
 
 .metric-header {
@@ -168,8 +168,8 @@ h4 {
   box-shadow: 0 0 8px var(--status-safe-glow);
 }
 .status-safe:hover {
-  border-color: rgba(16, 185, 129, 0.4);
-  box-shadow: 0 10px 20px -10px var(--status-safe-glow);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px -2px rgba(16, 185, 129, 0.15), 0 0 1px rgba(16, 185, 129, 0.25);
 }
 
 .status-warning .pulse-dot {
@@ -185,8 +185,8 @@ h4 {
   color: var(--status-warning);
 }
 .status-warning:hover {
-  border-color: rgba(245, 158, 11, 0.4);
-  box-shadow: 0 10px 20px -10px var(--status-warning-glow);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px -2px rgba(245, 158, 11, 0.15), 0 0 1px rgba(245, 158, 11, 0.25);
 }
 
 .status-critical .pulse-dot {
@@ -203,7 +203,7 @@ h4 {
   animation: shake-mild 0.5s infinite;
 }
 .status-critical:hover {
-  border-color: rgba(239, 68, 68, 0.4);
-  box-shadow: 0 10px 20px -10px var(--status-critical-glow);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px -2px rgba(239, 68, 68, 0.15), 0 0 1px rgba(239, 68, 68, 0.25);
 }
 </style>

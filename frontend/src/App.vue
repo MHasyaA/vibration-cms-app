@@ -20,7 +20,6 @@ import {
 
 // --- State Router ---
 const activePage = ref<'login' | 'overview' | 'detail' | 'alarms' | 'devices' | 'modbus-config' | 'master-setting'>('login');
-const theme = ref<'dark' | 'light'>('dark');
 const isDummyMode = ref(localStorage.getItem('scada_dummy_mode') === 'true');
 
 // --- Auth State ---
@@ -165,14 +164,6 @@ function getHeaders() {
 }
 
 // --- Watchers ---
-watch(theme, (newTheme) => {
-  if (newTheme === 'light') {
-    document.documentElement.classList.add('light-theme');
-  } else {
-    document.documentElement.classList.remove('light-theme');
-  }
-}, { immediate: true });
-
 watch(isDummyMode, async () => {
   await loadAllData();
 });
@@ -902,7 +893,7 @@ onUnmounted(() => {
   <div v-if="activePage === 'login'" class="login-viewport">
     <div class="login-box glass-panel">
       <div class="logo-area">
-        <div class="scada-dot pulsing"></div>
+        <img :src="lightLogo" class="company-logo-login" alt="Company Logo" />
         <h2>VIBRATION<span class="accent-text"> // CMS</span></h2>
       </div>
       <p class="login-sub">Condition Monitoring System - Industri 4.0</p>
@@ -947,7 +938,7 @@ onUnmounted(() => {
     <!-- LEFT SIDEBAR -->
     <aside class="scada-sidebar">
       <div class="brand">
-        <img :src="theme === 'dark' ? darkLogo : lightLogo" class="company-logo" alt="PT Logo" />
+        <img :src="darkLogo" class="company-logo" alt="PT Logo" />
       </div>
       
       <nav class="nav-links">
@@ -1096,18 +1087,6 @@ onUnmounted(() => {
               LIVE
             </span>
           </button>
-
-          <!-- Theme Switcher -->
-          <button @click="theme = theme === 'dark' ? 'light' : 'dark'" class="theme-btn">
-            <span v-if="theme === 'dark'">
-              <svg style="vertical-align: middle; margin-right: 4px;" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-              LIGHT
-            </span>
-            <span v-else>
-              <svg style="vertical-align: middle; margin-right: 4px;" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-              DARK
-            </span>
-          </button>
         </div>
       </header>
 
@@ -1130,11 +1109,13 @@ onUnmounted(() => {
               <h4>Velocity Z (mm/s)</h4>
               <div class="comp-list">
                 <div v-for="d in devicesList" :key="'zvel-'+d.id" class="comp-bar-row">
-                  <span class="comp-lbl">{{ d.namaSensor }}</span>
+                  <div class="comp-bar-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                    <span class="comp-lbl" style="margin-bottom: 0;">{{ d.namaSensor }}</span>
+                    <span class="comp-val text-mono">{{ getDeviceTelemetry(d.id)?.zVelocity?.toFixed(2) || '--' }}</span>
+                  </div>
                   <div class="comp-bar-track">
                      <div class="comp-bar-fill" :class="getDeviceStatus(d.id)" :style="{ width: Math.min(((getDeviceTelemetry(d.id)?.zVelocity || 0) / (d.setpointZVel || 10)) * 100, 100) + '%' }"></div>
                   </div>
-                  <span class="comp-val text-mono">{{ getDeviceTelemetry(d.id)?.zVelocity?.toFixed(2) || '--' }}</span>
                 </div>
               </div>
             </div>
@@ -1143,11 +1124,13 @@ onUnmounted(() => {
               <h4>Velocity X (mm/s)</h4>
               <div class="comp-list">
                 <div v-for="d in devicesList" :key="'xvel-'+d.id" class="comp-bar-row">
-                  <span class="comp-lbl">{{ d.namaSensor }}</span>
+                  <div class="comp-bar-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                    <span class="comp-lbl" style="margin-bottom: 0;">{{ d.namaSensor }}</span>
+                    <span class="comp-val text-mono">{{ getDeviceTelemetry(d.id)?.xVelocity?.toFixed(2) || '--' }}</span>
+                  </div>
                   <div class="comp-bar-track">
                      <div class="comp-bar-fill" :class="getDeviceStatus(d.id)" :style="{ width: Math.min(((getDeviceTelemetry(d.id)?.xVelocity || 0) / (d.setpointXVel || 10)) * 100, 100) + '%' }"></div>
                   </div>
-                  <span class="comp-val text-mono">{{ getDeviceTelemetry(d.id)?.xVelocity?.toFixed(2) || '--' }}</span>
                 </div>
               </div>
             </div>
@@ -1156,11 +1139,13 @@ onUnmounted(() => {
               <h4>Acceleration Z (mm/s²)</h4>
               <div class="comp-list">
                 <div v-for="d in devicesList" :key="'zacc-'+d.id" class="comp-bar-row">
-                  <span class="comp-lbl">{{ d.namaSensor }}</span>
+                  <div class="comp-bar-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                    <span class="comp-lbl" style="margin-bottom: 0;">{{ d.namaSensor }}</span>
+                    <span class="comp-val text-mono">{{ getDeviceTelemetry(d.id)?.zAcceleration?.toFixed(2) || '--' }}</span>
+                  </div>
                   <div class="comp-bar-track">
                      <div class="comp-bar-fill" :class="getDeviceStatus(d.id)" :style="{ width: Math.min(((getDeviceTelemetry(d.id)?.zAcceleration || 0) / (d.setpointZAcc || 10)) * 100, 100) + '%' }"></div>
                   </div>
-                  <span class="comp-val text-mono">{{ getDeviceTelemetry(d.id)?.zAcceleration?.toFixed(2) || '--' }}</span>
                 </div>
               </div>
             </div>
@@ -1169,11 +1154,13 @@ onUnmounted(() => {
               <h4>Acceleration X (mm/s²)</h4>
               <div class="comp-list">
                 <div v-for="d in devicesList" :key="'xacc-'+d.id" class="comp-bar-row">
-                  <span class="comp-lbl">{{ d.namaSensor }}</span>
+                  <div class="comp-bar-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                    <span class="comp-lbl" style="margin-bottom: 0;">{{ d.namaSensor }}</span>
+                    <span class="comp-val text-mono">{{ getDeviceTelemetry(d.id)?.xAcceleration?.toFixed(2) || '--' }}</span>
+                  </div>
                   <div class="comp-bar-track">
                      <div class="comp-bar-fill" :class="getDeviceStatus(d.id)" :style="{ width: Math.min(((getDeviceTelemetry(d.id)?.xAcceleration || 0) / (d.setpointXAcc || 10)) * 100, 100) + '%' }"></div>
                   </div>
-                  <span class="comp-val text-mono">{{ getDeviceTelemetry(d.id)?.xAcceleration?.toFixed(2) || '--' }}</span>
                 </div>
               </div>
             </div>
@@ -1182,11 +1169,13 @@ onUnmounted(() => {
               <h4>Temperature (°C)</h4>
               <div class="comp-list">
                 <div v-for="d in devicesList" :key="'temp-'+d.id" class="comp-bar-row">
-                  <span class="comp-lbl">{{ d.namaSensor }}</span>
+                  <div class="comp-bar-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                    <span class="comp-lbl" style="margin-bottom: 0;">{{ d.namaSensor }}</span>
+                    <span class="comp-val text-mono">{{ getDeviceTelemetry(d.id)?.temperature?.toFixed(1) || '--' }}</span>
+                  </div>
                   <div class="comp-bar-track">
                      <div class="comp-bar-fill" :class="getDeviceStatus(d.id)" :style="{ width: Math.min(((getDeviceTelemetry(d.id)?.temperature || 0) / (d.setpointTemp || 70)) * 100, 100) + '%' }"></div>
                   </div>
-                  <span class="comp-val text-mono">{{ getDeviceTelemetry(d.id)?.temperature?.toFixed(1) || '--' }}</span>
                 </div>
               </div>
             </div>
@@ -1256,7 +1245,7 @@ onUnmounted(() => {
                 <div class="health-card-body">
                   <div class="health-gauge-section">
                     <svg width="145" height="145" viewBox="0 0 100 100">
-                      <circle cx="50" cy="50" r="44" stroke="rgba(255,255,255,0.04)" stroke-width="9" fill="none" />
+                      <circle cx="50" cy="50" r="44" stroke="rgba(9, 30, 66, 0.06)" stroke-width="9" fill="none" />
                       <circle cx="50" cy="50" r="44" 
                               :stroke="healthScore >= 85 ? 'var(--status-safe)' : (healthScore >= 70 ? 'var(--status-warning)' : 'var(--status-critical)')" 
                               stroke-width="9" 
@@ -1265,7 +1254,7 @@ onUnmounted(() => {
                               stroke-dasharray="276.46" 
                               :stroke-dashoffset="276.46 - (276.46 * healthScore) / 100"
                               style="transition: stroke-dashoffset 0.8s ease-in-out;" />
-                      <text x="50" y="56" text-anchor="middle" font-size="18" font-weight="800" fill="white" class="text-mono">{{ healthScore }}%</text>
+                      <text x="50" y="56" text-anchor="middle" font-size="18" font-weight="800" fill="var(--text-primary)" class="text-mono">{{ healthScore }}%</text>
                     </svg>
                   </div>
                   <div class="health-info-section">
@@ -1400,9 +1389,9 @@ onUnmounted(() => {
                             width="28" 
                             :height="getTrendBarHeight(day.count)" 
                             rx="4" 
-                            :fill="day.count > 0 ? 'var(--status-critical)' : 'rgba(255,255,255,0.08)'" />
-                      <text :x="22 + Number(idx) * 41" y="126" text-anchor="middle" font-size="10" fill="rgba(255,255,255,0.45)">{{ day.date.substring(8, 10) }}</text>
-                      <text :x="22 + Number(idx) * 41" :y="104 - getTrendBarHeight(day.count)" text-anchor="middle" font-size="10" font-weight="bold" fill="white" v-if="day.count > 0">{{ day.count }}</text>
+                            :fill="day.count > 0 ? 'var(--status-critical)' : 'rgba(9, 30, 66, 0.08)'" />
+                      <text :x="22 + Number(idx) * 41" y="126" text-anchor="middle" font-size="10" fill="var(--text-secondary)">{{ day.date.substring(8, 10) }}</text>
+                      <text :x="22 + Number(idx) * 41" :y="104 - getTrendBarHeight(day.count)" text-anchor="middle" font-size="10" font-weight="bold" fill="var(--text-primary)" v-if="day.count > 0">{{ day.count }}</text>
                     </g>
                   </svg>
                 </div>
@@ -1507,7 +1496,7 @@ onUnmounted(() => {
                 :setpointXVel="selectedDeviceDetails.setpointXVel"
                 :setpointZAcc="selectedDeviceDetails.setpointZAcc"
                 :setpointXAcc="selectedDeviceDetails.setpointXAcc"
-                :isDarkTheme="theme === 'dark'"
+                :isDarkTheme="false"
                 @range-change="handleRangeChange"
               />
             </div>
@@ -1682,7 +1671,16 @@ onUnmounted(() => {
 
             <!-- Connection Cards -->
             <div v-else class="conn-card-list">
-              <div v-for="conn in modbusConnections" :key="conn.id" class="conn-card glass-panel">
+              <div 
+                v-for="conn in modbusConnections" 
+                :key="conn.id" 
+                class="conn-card glass-panel"
+                :class="{ 
+                  'status-safe': conn.isOnline, 
+                  'status-critical': !conn.isOnline && conn.isActive, 
+                  'status-inactive': !conn.isActive 
+                }"
+              >
                 <div class="conn-card-left">
                   <div class="conn-port-badge" :class="{ 'conn-active': conn.isOnline }">
                     <span class="conn-status-dot" :class="{ 'active': conn.isOnline }"></span>
@@ -2141,37 +2139,35 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: var(--bg-space);
+  background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
 }
 
 .login-box {
   width: 100%;
   max-width: 420px;
   padding: 40px;
-  background: var(--bg-panel-solid);
+  background: var(--bg-panel);
   display: flex;
   flex-direction: column;
-  border-radius: 16px;
-  box-shadow: var(--shadow-premium);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-color);
+  text-align: center;
 }
 
 .login-box .logo-area {
   display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 12px;
   margin-bottom: 8px;
 }
 
-.scada-dot {
-  width: 10px;
-  height: 10px;
-  background: var(--accent-primary);
-  border-radius: 50%;
-  box-shadow: 0 0 10px var(--accent-primary);
-}
-
-.scada-dot.pulsing {
-  animation: pulse-soft 1.5s infinite;
+.company-logo-login {
+  max-width: 160px;
+  height: auto;
+  margin-bottom: 8px;
 }
 
 .login-sub {
@@ -2211,6 +2207,7 @@ onUnmounted(() => {
   font-weight: 700;
   color: var(--text-secondary);
   text-transform: uppercase;
+  text-align: left;
 }
 
 .input-group input {
@@ -2218,29 +2215,36 @@ onUnmounted(() => {
   border: 1px solid var(--border-color);
   color: var(--text-primary);
   padding: 12px 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .input-group input:focus {
   outline: none;
-  border-color: var(--accent-primary);
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
 .login-btn {
-  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+  background: var(--accent-primary);
   border: none;
   color: white;
   padding: 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.25);
+  box-shadow: var(--shadow-sm);
   margin-top: 10px;
+  transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
 }
 
 .login-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+  background: var(--accent-hover);
+  box-shadow: var(--shadow-md);
+}
+
+.login-btn:active {
+  transform: scale(0.98);
 }
 
 .login-hint {
@@ -2250,6 +2254,7 @@ onUnmounted(() => {
   font-size: 0.75rem;
   color: var(--text-muted);
   line-height: 1.6;
+  text-align: left;
 }
 
 /* SCADA VIEWPORT LAYOUT */
@@ -2264,8 +2269,8 @@ onUnmounted(() => {
 .scada-sidebar {
   width: var(--sidebar-width);
   height: 100%;
-  background: var(--bg-panel-solid);
-  border-right: 1px solid var(--border-color);
+  background: var(--bg-sidebar);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -2278,7 +2283,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .scada-sidebar .brand .company-logo {
@@ -2312,26 +2317,27 @@ onUnmounted(() => {
   gap: 12px;
   background: transparent;
   border: none;
-  color: var(--text-secondary);
+  color: var(--text-on-dark-muted);
   padding: 12px 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-family: inherit;
   font-weight: 600;
   font-size: 0.85rem;
   cursor: pointer;
   text-align: left;
   position: relative;
+  transition: all 0.2s ease;
 }
 
 .nav-btn:hover {
-  background: var(--bg-input-hover);
-  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-on-dark);
 }
 
 .nav-btn.active {
-  background: var(--bg-input);
-  color: var(--accent-primary);
-  border: 1px solid var(--border-color);
+  background: var(--accent-primary);
+  color: var(--text-on-dark);
+  border: 1px solid var(--accent-primary);
 }
 
 .badge-count {
@@ -2357,7 +2363,7 @@ onUnmounted(() => {
 .sidebar-devices-sec h4 {
   font-size: 0.7rem;
   font-weight: 800;
-  color: var(--text-muted);
+  color: var(--text-on-dark-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-bottom: 12px;
@@ -2378,18 +2384,19 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   padding: 8px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   border: 1px solid transparent;
+  transition: all 0.2s ease;
 }
 
 .mini-item:hover {
-  background: var(--bg-input-hover);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .mini-item.active {
-  background: var(--bg-input);
-  border-color: var(--border-color);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 .mini-item .status-indicator {
@@ -2438,9 +2445,18 @@ onUnmounted(() => {
   text-overflow: ellipsis;
 }
 
+.mini-item .meta .name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-on-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .mini-item .meta .loc {
   font-size: 0.65rem;
-  color: var(--text-muted);
+  color: var(--text-on-dark-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2449,12 +2465,12 @@ onUnmounted(() => {
 .mini-item .mini-val {
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--text-on-dark-muted);
 }
 
 .user-block {
   padding: 20px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -2486,37 +2502,39 @@ onUnmounted(() => {
 .username {
   font-size: 0.85rem;
   font-weight: 700;
+  color: var(--text-on-dark);
 }
 
 .btn-logout {
   background: transparent;
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-on-dark-muted);
   padding: 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .btn-logout:hover {
-  background: var(--status-critical-glow);
-  color: var(--status-critical);
-  border-color: rgba(239, 68, 68, 0.2);
+  background: var(--status-critical);
+  color: var(--text-on-dark);
+  border-color: var(--status-critical);
 }
 
 /* SIDEBAR CONTACT BRANDING */
 .sidebar-contact {
   padding: 16px 20px;
-  border-top: 1px solid var(--border-color);
-  background: rgba(13, 25, 38, 0.1);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.12);
 }
 
 .scada-sidebar .sidebar-contact .contact-title {
   font-size: 0.72rem;
   font-weight: 700;
-  color: var(--text-secondary);
+  color: var(--text-on-dark-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 8px;
@@ -2533,7 +2551,7 @@ onUnmounted(() => {
   align-items: flex-start;
   gap: 8px;
   font-size: 0.68rem;
-  color: var(--text-muted);
+  color: var(--text-on-dark-muted);
   line-height: 1.3;
   margin: 0;
 }
@@ -2568,11 +2586,11 @@ onUnmounted(() => {
 .scada-header {
   height: var(--header-height);
   padding: 0 32px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: var(--bg-panel-solid);
+  background: var(--bg-header);
   flex-shrink: 0;
 }
 
@@ -2582,11 +2600,12 @@ onUnmounted(() => {
   letter-spacing: 0.5px;
   display: inline-block;
   margin-right: 16px;
+  color: var(--text-on-dark);
 }
 
 .server-status {
   font-size: 0.75rem;
-  color: var(--text-muted);
+  color: var(--text-on-dark-muted);
   font-weight: 600;
   display: inline-flex;
   align-items: center;
@@ -2609,29 +2628,37 @@ onUnmounted(() => {
 .clock-display {
   font-size: 0.95rem;
   font-weight: 700;
-  color: var(--text-primary);
-  background: var(--bg-input);
-  border: 1px solid var(--border-color);
+  color: var(--text-on-dark);
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   padding: 6px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   letter-spacing: 0.5px;
 }
 
 .theme-btn {
   background: transparent;
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-on-dark-muted);
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-family: inherit;
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .theme-btn:hover {
-  background: var(--bg-input-hover);
-  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-on-dark);
+}
+
+.system-main-title {
+  color: var(--text-on-dark);
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
 }
 
 .dummy-active {
@@ -2722,14 +2749,12 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 16px;
   position: relative;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.overview-device-card.critical {
-  border-color: rgba(239, 68, 68, 0.2);
-}
-
-.overview-device-card.warning {
-  border-color: rgba(245, 158, 11, 0.2);
+.overview-device-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
 }
 
 .overview-device-card .card-header {
@@ -2921,13 +2946,18 @@ onUnmounted(() => {
 .comp-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .comp-bar-row {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.comp-bar-row:hover {
+  transform: translateX(3px);
 }
 
 .comp-lbl {
@@ -2940,25 +2970,30 @@ onUnmounted(() => {
 
 .comp-bar-track {
   width: 100%;
-  height: 6px;
-  background: var(--bg-input);
-  border-radius: 3px;
+  height: 8px;
+  background: rgba(9, 30, 66, 0.06);
+  border-radius: 4px;
   overflow: hidden;
+  transition: background-color 0.2s ease;
+}
+
+.comp-bar-row:hover .comp-bar-track {
+  background: rgba(9, 30, 66, 0.1);
 }
 
 .comp-bar-fill {
   height: 100%;
-  border-radius: 3px;
-  background: var(--status-safe);
+  border-radius: 4px;
+  background: linear-gradient(90deg, #36b37e 0%, #00b8d9 100%);
   transition: width 0.3s ease;
 }
 
 .comp-bar-fill.warning {
-  background: var(--status-warning);
+  background: linear-gradient(90deg, #ffab00 0%, #ff8b00 100%);
 }
 
 .comp-bar-fill.critical {
-  background: var(--status-critical);
+  background: linear-gradient(90deg, #ff5630 0%, #bf2600 100%);
 }
 
 .comp-val {
@@ -3026,22 +3061,29 @@ onUnmounted(() => {
 }
 
 .scada-table th {
-  padding: 12px 16px;
+  padding: 12px 18px;
   border-bottom: 2px solid var(--border-color);
+  background: rgba(9, 30, 66, 0.04);
   color: var(--text-secondary);
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
+  letter-spacing: 0.8px;
 }
 
 .scada-table td {
-  padding: 16px;
+  padding: 14px 18px;
   border-bottom: 1px solid var(--border-color);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+}
+
+.scada-table tbody tr {
+  transition: background-color 0.15s ease;
 }
 
 .scada-table tbody tr:hover {
-  background: var(--bg-input-hover);
+  background: rgba(9, 30, 66, 0.015);
 }
 
 .scada-table .empty-row {
@@ -3051,7 +3093,7 @@ onUnmounted(() => {
 }
 
 .alarm-row.critical {
-  background: rgba(239, 68, 68, 0.03);
+  background: rgba(255, 86, 48, 0.04);
 }
 
 .critical-text {
@@ -3060,36 +3102,52 @@ onUnmounted(() => {
 }
 
 .btn-ack {
-  background: var(--status-critical);
-  border: none;
-  color: white;
-  padding: 6px 12px;
-  border-radius: 4px;
-  font-size: 0.7rem;
-  font-weight: 800;
+  background: rgba(255, 86, 48, 0.06);
+  border: 1px solid rgba(255, 86, 48, 0.2);
+  color: var(--status-critical);
+  padding: 6px 14px;
+  border-radius: var(--radius-md);
+  font-size: 0.72rem;
+  font-weight: 700;
   cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  letter-spacing: 0.5px;
 }
 
 .btn-ack:hover {
-  background: #dc2626;
+  background: var(--status-critical);
+  color: white;
+  border-color: var(--status-critical);
+  box-shadow: 0 4px 10px rgba(255, 86, 48, 0.25);
+  transform: translateY(-1px);
+}
+
+.btn-ack:active {
+  transform: scale(0.97);
 }
 
 .btn-add-device {
-  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+  background: var(--accent-primary);
   border: none;
   color: white;
-  padding: 10px 18px;
-  border-radius: 8px;
+  padding: 10px 20px;
+  border-radius: var(--radius-md);
   font-family: inherit;
   font-size: 0.8rem;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.2);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .btn-add-device:hover {
+  background: var(--accent-hover);
+  box-shadow: var(--shadow-md);
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
+}
+
+.btn-add-device:active {
+  transform: scale(0.98);
 }
 
 .action-btns {
@@ -3098,31 +3156,36 @@ onUnmounted(() => {
 }
 
 .edit-btn, .del-btn {
-  background: transparent;
+  background: #ffffff;
   border: 1px solid var(--border-color);
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 0.7rem;
+  padding: 5px 12px;
+  border-radius: var(--radius-md);
+  font-size: 0.72rem;
   font-weight: 700;
   cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .edit-btn {
   color: var(--accent-primary);
-  border-color: rgba(99, 102, 241, 0.2);
+  border-color: var(--border-color);
 }
 
 .edit-btn:hover {
-  background: var(--primary-glow);
+  background: rgba(0, 82, 204, 0.05);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
 }
 
 .del-btn {
   color: var(--status-critical);
-  border-color: rgba(239, 68, 68, 0.2);
+  border-color: var(--border-color);
 }
 
 .del-btn:hover {
-  background: var(--status-critical-glow);
+  background: rgba(255, 86, 48, 0.05);
+  border-color: var(--status-critical);
+  color: var(--status-critical);
 }
 
 /* ========================
@@ -3170,12 +3233,15 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   gap: 16px;
-  transition: border-color 0.2s;
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.2s;
 }
 
-.conn-card.conn-active-card { border-color: rgba(0, 210, 255, 0.3); }
+.conn-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
 
 .conn-card-left {
   display: flex;
@@ -3447,13 +3513,13 @@ onUnmounted(() => {
   flex-direction: column;
   position: relative;
   overflow: hidden;
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s ease;
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.2s, box-shadow 0.25s;
 }
 
 .analytics-card:hover {
   transform: translateY(-2px);
-  border-color: var(--border-glow-hover);
-  box-shadow: var(--shadow-premium);
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
 }
 
 .analytics-card .card-title {
@@ -3532,7 +3598,7 @@ onUnmounted(() => {
 .capacity-label {
   font-size: 0.65rem;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
@@ -3589,7 +3655,7 @@ onUnmounted(() => {
   width: 77px;
   height: 77px;
   border-radius: 50%;
-  background: var(--bg-space) !important;
+  background: var(--bg-panel) !important;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3609,13 +3675,13 @@ onUnmounted(() => {
 .donut-hole .pct {
   font-size: 1rem;
   font-weight: 700;
-  color: white;
+  color: var(--text-primary);
 }
 
 .donut-hole .lbl {
   font-size: 0.5rem;
   font-weight: 700;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   letter-spacing: 0.2px;
 }
 
@@ -3704,7 +3770,7 @@ onUnmounted(() => {
 
 .alarm-val-wrapper .desc {
   font-size: 0.7rem;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   margin-top: 4px;
 }
 
@@ -3768,7 +3834,7 @@ onUnmounted(() => {
 
 .status-hint-desc {
   font-size: 0.65rem;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   text-align: center;
   margin-top: 8px;
 }
@@ -3799,7 +3865,7 @@ onUnmounted(() => {
 }
 
 .worst-info .param {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 0.65rem;
 }
 
@@ -3812,7 +3878,7 @@ onUnmounted(() => {
 .worst-progress-track {
   flex: 1;
   height: 4px;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(9, 30, 66, 0.08);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -3827,7 +3893,7 @@ onUnmounted(() => {
   font-size: 0.7rem;
   font-weight: 700;
   color: var(--status-critical);
-  width: 32px;
+  min-width: 55px;
   text-align: right;
 }
 
@@ -3859,7 +3925,7 @@ onUnmounted(() => {
 
 .regression-badge-glow .lbl {
   font-size: 0.58rem;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
@@ -3894,9 +3960,9 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 4px 8px;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.03);
+  background: rgba(9, 30, 66, 0.04);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
 }
 
 .dev-row .dev-info {
@@ -3911,7 +3977,7 @@ onUnmounted(() => {
 
 .dev-row .dev-info .param {
   font-size: 0.6rem;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .dev-badge-wrapper {
