@@ -864,6 +864,14 @@ function formatDate(isoString: string) {
   return d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatLastUpdate(isoString: string) {
+  if (!isoString) return '--/--/----';
+  const d = new Date(isoString);
+  // Tambah 7 jam khusus untuk data Last Update
+  const wibDate = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+  return wibDate.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + wibDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+}
+
 // --- Live Clock ---
 const currentTime = ref('');
 function updateClock() {
@@ -1329,7 +1337,7 @@ onUnmounted(() => {
                 <div class="status-wrapper" style="text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
                   <span class="status-text">{{ getDeviceStatus(d.id).toUpperCase() }}</span>
                   <div class="last-update-hint" v-if="getDeviceStatus(d.id) === 'unknown' && getDeviceTelemetry(d.id)?.timestamp">
-                    Last Update: {{ formatDate(getDeviceTelemetry(d.id).timestamp) }}
+                    Last Update: {{ formatLastUpdate(getDeviceTelemetry(d.id).timestamp) }}
                   </div>
                 </div>
               </div>
