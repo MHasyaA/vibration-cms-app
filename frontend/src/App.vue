@@ -238,6 +238,51 @@ async function saveSystemSettings() {
   }
 }
 
+const defaultZoneBLimit = computed(() => {
+  const c = systemSettings.value.pilihanKelasMesin;
+  if (c === 'Class II') return '1.80';
+  if (c === 'Class III') return '2.80';
+  if (c === 'Class IV') return '4.50';
+  return '1.12';
+});
+
+const defaultZoneCLimit = computed(() => {
+  const c = systemSettings.value.pilihanKelasMesin;
+  if (c === 'Class II') return '4.50';
+  if (c === 'Class III') return '7.10';
+  if (c === 'Class IV') return '11.20';
+  return '2.80';
+});
+
+const defaultZoneDLimit = computed(() => {
+  const c = systemSettings.value.pilihanKelasMesin;
+  if (c === 'Class II') return '11.20';
+  if (c === 'Class III') return '18.00';
+  if (c === 'Class IV') return '28.00';
+  return '7.10';
+});
+
+function onMachineClassChange() {
+  const newClass = systemSettings.value.pilihanKelasMesin;
+  if (newClass === 'Class I') {
+    systemSettings.value.batasBawahZoneB = '1.12';
+    systemSettings.value.batasBawahZoneC = '2.80';
+    systemSettings.value.batasBawahZoneD = '7.10';
+  } else if (newClass === 'Class II') {
+    systemSettings.value.batasBawahZoneB = '1.80';
+    systemSettings.value.batasBawahZoneC = '4.50';
+    systemSettings.value.batasBawahZoneD = '11.20';
+  } else if (newClass === 'Class III') {
+    systemSettings.value.batasBawahZoneB = '2.80';
+    systemSettings.value.batasBawahZoneC = '7.10';
+    systemSettings.value.batasBawahZoneD = '18.00';
+  } else if (newClass === 'Class IV') {
+    systemSettings.value.batasBawahZoneB = '4.50';
+    systemSettings.value.batasBawahZoneC = '11.20';
+    systemSettings.value.batasBawahZoneD = '28.00';
+  }
+}
+
 // --- Polling Interval ---
 let pollInterval: any = null;
 
@@ -816,9 +861,7 @@ function getHintClass(val: any) {
 function formatDate(isoString: string) {
   if (!isoString) return '--/--/----';
   const d = new Date(isoString);
-  // Tambah 7 jam (7 * 60 * 60 * 1000 ms) untuk Waktu Indonesia Barat (WIB)
-  const wibDate = new Date(d.getTime() + 7 * 60 * 60 * 1000);
-  return wibDate.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + wibDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 }
 
 // --- Live Clock ---
@@ -2058,7 +2101,7 @@ onUnmounted(() => {
                   <div class="form-grid">
                     <div class="form-group">
                       <label>Pilihan Kelas Mesin</label>
-                      <select v-model="systemSettings.pilihanKelasMesin">
+                      <select v-model="systemSettings.pilihanKelasMesin" @change="onMachineClassChange">
                         <option value="Class I">Class I (Mesin Kecil &lt; 15 kW)</option>
                         <option value="Class II">Class II (Mesin Sedang 15 kW - 75 kW)</option>
                         <option value="Class III">Class III (Mesin Besar dengan Fondasi Kokoh)</option>
@@ -2069,17 +2112,17 @@ onUnmounted(() => {
                     <div class="form-group">
                       <label>Batas Bawah Zone B (mm/s)</label>
                       <input type="number" v-model="systemSettings.batasBawahZoneB" step="0.01" min="0" />
-                      <span class="field-desc">Kecepatan RMS maksimum untuk Zone A. Mulai dari nilai ini adalah Zone B (Default: 1.12 mm/s).</span>
+                      <span class="field-desc">Kecepatan RMS maksimum untuk Zone A. Mulai dari nilai ini adalah Zone B (Default: {{ defaultZoneBLimit }} mm/s).</span>
                     </div>
                     <div class="form-group">
                       <label>Batas Bawah Zone C (mm/s)</label>
                       <input type="number" v-model="systemSettings.batasBawahZoneC" step="0.01" min="0" />
-                      <span class="field-desc">Kecepatan RMS maksimum untuk Zone B. Mulai dari nilai ini adalah Zone C (Default: 2.80 mm/s).</span>
+                      <span class="field-desc">Kecepatan RMS maksimum untuk Zone B. Mulai dari nilai ini adalah Zone C (Default: {{ defaultZoneCLimit }} mm/s).</span>
                     </div>
                     <div class="form-group">
                       <label>Batas Bawah Zone D (mm/s)</label>
                       <input type="number" v-model="systemSettings.batasBawahZoneD" step="0.01" min="0" />
-                      <span class="field-desc">Kecepatan RMS maksimum untuk Zone C. Di atas nilai ini diklasifikasikan sebagai Zone D / Danger (Default: 7.10 mm/s).</span>
+                      <span class="field-desc">Kecepatan RMS maksimum untuk Zone C. Di atas nilai ini diklasifikasikan sebagai Zone D / Danger (Default: {{ defaultZoneDLimit }} mm/s).</span>
                     </div>
                   </div>
                 </div>
