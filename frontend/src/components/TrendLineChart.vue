@@ -67,8 +67,9 @@ function exportToCSV() {
   const headers = ['Timestamp', 'Core Temperature (°C)', 'Z-Axis Velocity (mm/s)', 'X-Axis Velocity (mm/s)', 'Z-Axis Acceleration (mm/s²)', 'X-Axis Acceleration (mm/s²)'];
   
   const rows = sortedLogs.value.map(log => {
+    const formattedDate = new Date(log.timestamp).toLocaleString('id-ID').replace(',', '');
     return [
-      `"${new Date(log.timestamp).toLocaleString('id-ID')}"`,
+      `"${formattedDate}"`,
       log.temperature.toFixed(2),
       log.zVelocity.toFixed(2),
       log.xVelocity.toFixed(2),
@@ -77,7 +78,7 @@ function exportToCSV() {
     ].join(',');
   });
   
-  const csvContent = [headers.join(','), ...rows].join('\n');
+  const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
   const url = URL.createObjectURL(blob);
