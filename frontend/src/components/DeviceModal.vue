@@ -16,6 +16,9 @@ const setpointZVel = ref<number | null>(null);
 const setpointXVel = ref<number | null>(null);
 const setpointZAcc = ref<number | null>(null);
 const setpointXAcc = ref<number | null>(null);
+const setpointPressure = ref<number | null>(null);
+const setpointFlow = ref<number | null>(null);
+const setpointLevel = ref<number | null>(null);
 
 const error = ref<string | null>(null);
 
@@ -34,6 +37,9 @@ watch(() => props.show, (newVal) => {
       setpointXVel.value = props.device.setpointXVel;
       setpointZAcc.value = props.device.setpointZAcc;
       setpointXAcc.value = props.device.setpointXAcc;
+      setpointPressure.value = props.device.setpointPressure ?? null;
+      setpointFlow.value = props.device.setpointFlow ?? null;
+      setpointLevel.value = props.device.setpointLevel ?? null;
     } else {
       // Add mode: reset values
       slaveId.value = null;
@@ -44,6 +50,9 @@ watch(() => props.show, (newVal) => {
       setpointXVel.value = 7.1;
       setpointZAcc.value = 10.0;
       setpointXAcc.value = 10.0;
+      setpointPressure.value = 5.0;
+      setpointFlow.value = 50.0;
+      setpointLevel.value = 800.0;
     }
   }
 });
@@ -68,6 +77,9 @@ async function handleSubmit() {
     setpointXVel: setpointXVel.value !== null ? Number(setpointXVel.value) : null,
     setpointZAcc: setpointZAcc.value !== null ? Number(setpointZAcc.value) : null,
     setpointXAcc: setpointXAcc.value !== null ? Number(setpointXAcc.value) : null,
+    setpointPressure: setpointPressure.value !== null ? Number(setpointPressure.value) : null,
+    setpointFlow: setpointFlow.value !== null ? Number(setpointFlow.value) : null,
+    setpointLevel: setpointLevel.value !== null ? Number(setpointLevel.value) : null,
   };
 
   emit('save', payload);
@@ -153,9 +165,26 @@ async function handleSubmit() {
                 </div>
               </div>
 
-              <div class="form-group">
-                <label for="set-x-acc">X-Acceleration Limit (mm/s²)</label>
-                <input type="number" step="0.05" id="set-x-acc" v-model="setpointXAcc" />
+              <div class="form-group row">
+                <div class="col">
+                  <label for="set-x-acc">X-Acceleration Limit (mm/s²)</label>
+                  <input type="number" step="0.05" id="set-x-acc" v-model="setpointXAcc" />
+                </div>
+                <div class="col">
+                  <label for="set-pressure">Pressure Limit (Bar)</label>
+                  <input type="number" step="0.1" id="set-pressure" v-model="setpointPressure" />
+                </div>
+              </div>
+
+              <div class="form-group row">
+                <div class="col">
+                  <label for="set-flow">Flow Limit (L/min)</label>
+                  <input type="number" step="0.1" id="set-flow" v-model="setpointFlow" />
+                </div>
+                <div class="col">
+                  <label for="set-level">Level Limit (mm)</label>
+                  <input type="number" step="1" id="set-level" v-model="setpointLevel" />
+                </div>
               </div>
             </div>
           </div>

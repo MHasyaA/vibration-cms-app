@@ -34,6 +34,9 @@ export class DeviceService {
     setpointXVel?: number;
     setpointZAcc?: number;
     setpointXAcc?: number;
+    setpointPressure?: number;
+    setpointFlow?: number;
+    setpointLevel?: number;
     // Phase #4: Modbus config
     connectionId?: number | null;
     regTemp?: number | null;
@@ -41,8 +44,22 @@ export class DeviceService {
     regXVel?: number | null;
     regZAcc?: number | null;
     regXAcc?: number | null;
+    regPressure?: number | null;
+    regFlow?: number | null;
+    regLevel?: number | null;
     regDataType?: string;
     regByteOrder?: string;
+    scaleTemp?: number | null;
+    scaleZVel?: number | null;
+    scaleXVel?: number | null;
+    scaleZAcc?: number | null;
+    scaleXAcc?: number | null;
+    scalePressure?: number | null;
+    scaleFlow?: number | null;
+    scaleLevel?: number | null;
+    offsetPressure?: number | null;
+    offsetFlow?: number | null;
+    offsetLevel?: number | null;
   }) {
     // Check if slaveId is already taken
     const existing = await this.getDeviceBySlaveId(data.slaveId);
@@ -72,6 +89,9 @@ export class DeviceService {
       setpointXVel?: number;
       setpointZAcc?: number;
       setpointXAcc?: number;
+      setpointPressure?: number;
+      setpointFlow?: number;
+      setpointLevel?: number;
       // Phase #4: Modbus config
       connectionId?: number | null;
       regTemp?: number | null;
@@ -79,8 +99,22 @@ export class DeviceService {
       regXVel?: number | null;
       regZAcc?: number | null;
       regXAcc?: number | null;
+      regPressure?: number | null;
+      regFlow?: number | null;
+      regLevel?: number | null;
       regDataType?: string | null;
       regByteOrder?: string | null;
+      scaleTemp?: number | null;
+      scaleZVel?: number | null;
+      scaleXVel?: number | null;
+      scaleZAcc?: number | null;
+      scaleXAcc?: number | null;
+      scalePressure?: number | null;
+      scaleFlow?: number | null;
+      scaleLevel?: number | null;
+      offsetPressure?: number | null;
+      offsetFlow?: number | null;
+      offsetLevel?: number | null;
     }
   ) {
     // If slaveId is being changed, make sure it's not taken by another device

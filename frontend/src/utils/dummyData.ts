@@ -41,7 +41,10 @@ export const DUMMY_DEVICES = [
     setpointZVel: 7.5,
     setpointXVel: 7.5,
     setpointZAcc: 12.0,
-    setpointXAcc: 12.0
+    setpointXAcc: 12.0,
+    setpointPressure: 6.0,
+    setpointFlow: 60.0,
+    setpointLevel: 500.0
   },
   {
     id: 2,
@@ -53,7 +56,10 @@ export const DUMMY_DEVICES = [
     setpointZVel: 5.0,
     setpointXVel: 5.0,
     setpointZAcc: 8.0,
-    setpointXAcc: 8.0
+    setpointXAcc: 8.0,
+    setpointPressure: 4.0,
+    setpointFlow: 40.0,
+    setpointLevel: 400.0
   },
   {
     id: 3,
@@ -65,7 +71,10 @@ export const DUMMY_DEVICES = [
     setpointZVel: 9.0,
     setpointXVel: 9.0,
     setpointZAcc: 15.0,
-    setpointXAcc: 15.0
+    setpointXAcc: 15.0,
+    setpointPressure: 8.0,
+    setpointFlow: 100.0,
+    setpointLevel: 1500.0
   },
   {
     id: 4,
@@ -77,7 +86,10 @@ export const DUMMY_DEVICES = [
     setpointZVel: 6.0,
     setpointXVel: 6.0,
     setpointZAcc: 10.0,
-    setpointXAcc: 10.0
+    setpointXAcc: 10.0,
+    setpointPressure: 5.0,
+    setpointFlow: 50.0,
+    setpointLevel: 500.0
   },
   {
     id: 5,
@@ -89,7 +101,10 @@ export const DUMMY_DEVICES = [
     setpointZVel: 4.5,
     setpointXVel: 4.5,
     setpointZAcc: 7.0,
-    setpointXAcc: 7.0
+    setpointXAcc: 7.0,
+    setpointPressure: 5.0,
+    setpointFlow: 35.0,
+    setpointLevel: 400.0
   }
 ];
 
@@ -114,6 +129,9 @@ export const generateDummyTelemetries = () => {
       xVelocity:   r(2.8, 0.4),
       zAcceleration: r(5.0, 0.8),
       xAcceleration: r(4.5, 0.8),
+      pressure: r(3.5, 0.4),           // dari setpoint 6.0 bar
+      flow: r(35.0, 3.0),              // dari setpoint 60 L/min
+      level: r(680, 20),               // > 500 mm setpoint → aman
       timestamp: now
     },
     // --- Device 2: WARNING (velocity ~80% setpoint) ---
@@ -124,6 +142,9 @@ export const generateDummyTelemetries = () => {
       xVelocity:   r(4.3, 0.3),        // 86% → WARNING
       zAcceleration: r(6.5, 0.5),      // 81% → WARNING
       xAcceleration: r(6.2, 0.5),
+      pressure: r(2.8, 0.2),           // dari setpoint 4.0 bar
+      flow: r(28.0, 2.0),              // dari setpoint 40 L/min
+      level: r(580, 15),               // > 400 mm setpoint → aman
       timestamp: now
     },
     // --- Device 3: CRITICAL — velocity & temperature di atas setpoint (GETER + ASAP) ---
@@ -134,6 +155,9 @@ export const generateDummyTelemetries = () => {
       xVelocity:   r(9.8, 0.5),        // >9.0 → CRITICAL
       zAcceleration: r(17.5, 1.0),     // >15 → CRITICAL
       xAcceleration: r(16.2, 1.0),
+      pressure: r(8.5, 0.4),           // >8.0 bar setpoint → CRITICAL
+      flow: r(108.0, 4.0),             // >100 L/min setpoint → CRITICAL
+      level: r(1200, 20),              // < 1500 mm setpoint → CRITICAL (low coolant)
       timestamp: now
     },
     // --- Device 4: SAFE ---
@@ -144,6 +168,9 @@ export const generateDummyTelemetries = () => {
       xVelocity:   r(1.9, 0.3),
       zAcceleration: r(3.2, 0.5),
       xAcceleration: r(3.0, 0.5),
+      pressure: r(3.1, 0.3),
+      flow: r(30.0, 2.0),
+      level: r(610, 25),               // > 500 mm setpoint → aman
       timestamp: now
     },
     // --- Device 5: WARNING (temperature ~85% setpoint) ---
@@ -154,6 +181,9 @@ export const generateDummyTelemetries = () => {
       xVelocity:   r(2.3, 0.3),
       zAcceleration: r(3.8, 0.4),
       xAcceleration: r(3.6, 0.4),
+      pressure: r(3.4, 0.3),
+      flow: r(24.0, 2.0),
+      level: r(510, 15),               // > 400 mm setpoint → aman
       timestamp: now
     }
   ];
@@ -242,6 +272,9 @@ export const generateDummyTrend = (deviceId: number, start?: string, end?: strin
   const tempBase = device.setpointTemp  * factor;
   const velBase  = device.setpointZVel  * factor;
   const accBase  = device.setpointZAcc  * factor;
+  const pressBase = (device.setpointPressure || 5.0) * factor;
+  const flowBase  = (device.setpointFlow || 50.0) * factor;
+  const levelBase = (device.setpointLevel || 800.0) * factor;
 
   // Spike zone: titik 40–60 dari 120 (sepertiga tengah grafik)
   const spikeStart = Math.floor(points * 0.38);
@@ -265,6 +298,9 @@ export const generateDummyTrend = (deviceId: number, start?: string, end?: strin
     const spikeMagTemp = device.setpointTemp * 0.35 * spikeFactor;
     const spikeMagVel  = device.setpointZVel * 0.55 * spikeFactor;
     const spikeMagAcc  = device.setpointZAcc * 0.45 * spikeFactor;
+    const spikeMagPress = (device.setpointPressure || 5.0) * 0.4 * spikeFactor;
+    const spikeMagFlow = (device.setpointFlow || 50.0) * 0.35 * spikeFactor;
+    const spikeMagLevel = (device.setpointLevel || 800.0) * 0.45 * spikeFactor;
 
     trend.push({
       timestamp:     new Date(t).toISOString(),
@@ -273,6 +309,9 @@ export const generateDummyTrend = (deviceId: number, start?: string, end?: strin
       xVelocity:     +(velBase  + spikeMagVel  * 0.9 + Math.sin(i * 0.13) * 0.7 + noise()).toFixed(3),
       zAcceleration: +(accBase  + spikeMagAcc  + Math.cos(i * 0.08) * 1.2 + noise()).toFixed(3),
       xAcceleration: +(accBase  + spikeMagAcc  * 0.85 + Math.sin(i * 0.09) * 1.0 + noise()).toFixed(3),
+      pressure:      +(pressBase + spikeMagPress + Math.sin(i * 0.15) * 0.3 + noise() * 0.1).toFixed(2),
+      flow:          +(flowBase + spikeMagFlow + Math.cos(i * 0.11) * 3 + noise()).toFixed(2),
+      level:         +(levelBase + spikeMagLevel + Math.sin(i * 0.08) * 40 + noise() * 5).toFixed(0),
     });
   }
   return trend;

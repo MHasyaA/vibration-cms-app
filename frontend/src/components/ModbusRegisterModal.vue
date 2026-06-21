@@ -24,6 +24,16 @@ const scaleXVel = ref<number>(1.0);
 const scaleZAcc = ref<number>(1.0);
 const scaleXAcc = ref<number>(1.0);
 
+const regPressure = ref<number | null>(null);
+const regFlow = ref<number | null>(null);
+const regLevel = ref<number | null>(null);
+const scalePressure = ref<number>(1.0);
+const scaleFlow = ref<number>(1.0);
+const scaleLevel = ref<number>(1.0);
+const offsetPressure = ref<number>(0.0);
+const offsetFlow = ref<number>(0.0);
+const offsetLevel = ref<number>(0.0);
+
 const error = ref<string | null>(null);
 
 const deviceName = computed(() => props.device?.namaSensor || '');
@@ -45,6 +55,15 @@ watch(() => props.show, (newVal) => {
     scaleXVel.value = props.device.scaleXVel ?? 1.0;
     scaleZAcc.value = props.device.scaleZAcc ?? 1.0;
     scaleXAcc.value = props.device.scaleXAcc ?? 1.0;
+    regPressure.value = props.device.regPressure ?? null;
+    regFlow.value = props.device.regFlow ?? null;
+    regLevel.value = props.device.regLevel ?? null;
+    scalePressure.value = props.device.scalePressure ?? 1.0;
+    scaleFlow.value = props.device.scaleFlow ?? 1.0;
+    scaleLevel.value = props.device.scaleLevel ?? 1.0;
+    offsetPressure.value = props.device.offsetPressure ?? 0.0;
+    offsetFlow.value = props.device.offsetFlow ?? 0.0;
+    offsetLevel.value = props.device.offsetLevel ?? 0.0;
   }
 });
 
@@ -63,6 +82,15 @@ function handleSubmit() {
     scaleXVel: scaleXVel.value !== null && scaleXVel.value !== undefined ? Number(scaleXVel.value) : 1.0,
     scaleZAcc: scaleZAcc.value !== null && scaleZAcc.value !== undefined ? Number(scaleZAcc.value) : 1.0,
     scaleXAcc: scaleXAcc.value !== null && scaleXAcc.value !== undefined ? Number(scaleXAcc.value) : 1.0,
+    regPressure: regPressure.value !== null && regPressure.value !== undefined ? Number(regPressure.value) : null,
+    regFlow: regFlow.value !== null && regFlow.value !== undefined ? Number(regFlow.value) : null,
+    regLevel: regLevel.value !== null && regLevel.value !== undefined ? Number(regLevel.value) : null,
+    scalePressure: scalePressure.value !== null && scalePressure.value !== undefined ? Number(scalePressure.value) : 1.0,
+    scaleFlow: scaleFlow.value !== null && scaleFlow.value !== undefined ? Number(scaleFlow.value) : 1.0,
+    scaleLevel: scaleLevel.value !== null && scaleLevel.value !== undefined ? Number(scaleLevel.value) : 1.0,
+    offsetPressure: offsetPressure.value !== null && offsetPressure.value !== undefined ? Number(offsetPressure.value) : 0.0,
+    offsetFlow: offsetFlow.value !== null && offsetFlow.value !== undefined ? Number(offsetFlow.value) : 0.0,
+    offsetLevel: offsetLevel.value !== null && offsetLevel.value !== undefined ? Number(offsetLevel.value) : 0.0,
   };
   emit('save', payload);
 }
@@ -183,6 +211,70 @@ function handleSubmit() {
                     <div class="scale-input-wrapper">
                       <span class="mult-symbol">×</span>
                       <input type="number" v-model="scaleXAcc" step="any" placeholder="1.0" class="text-mono input-scale" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- New registers: Pressure, Flow, Level with custom Calibration formula -->
+              <div class="reg-row-item">
+                <span class="reg-row-label">Pressure (Bar)</span>
+                <div class="reg-inputs-pair">
+                  <div class="input-with-label">
+                    <span class="field-hint">Register</span>
+                    <input type="number" v-model="regPressure" min="0" max="65535" placeholder="misal: 10" class="text-mono input-addr" />
+                  </div>
+                  <div class="input-with-label">
+                    <span class="field-hint">Offset (Pengurang)</span>
+                    <input type="number" v-model="offsetPressure" step="any" placeholder="0.0" class="text-mono input-addr" />
+                  </div>
+                  <div class="input-with-label">
+                    <span class="field-hint">Skala (Pembagi)</span>
+                    <div class="scale-input-wrapper">
+                      <span class="mult-symbol">÷</span>
+                      <input type="number" v-model="scalePressure" step="any" placeholder="1.0" class="text-mono input-scale" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="reg-row-item">
+                <span class="reg-row-label">Flow (L/min)</span>
+                <div class="reg-inputs-pair">
+                  <div class="input-with-label">
+                    <span class="field-hint">Register</span>
+                    <input type="number" v-model="regFlow" min="0" max="65535" placeholder="misal: 12" class="text-mono input-addr" />
+                  </div>
+                  <div class="input-with-label">
+                    <span class="field-hint">Offset (Pengurang)</span>
+                    <input type="number" v-model="offsetFlow" step="any" placeholder="0.0" class="text-mono input-addr" />
+                  </div>
+                  <div class="input-with-label">
+                    <span class="field-hint">Skala (Pembagi)</span>
+                    <div class="scale-input-wrapper">
+                      <span class="mult-symbol">÷</span>
+                      <input type="number" v-model="scaleFlow" step="any" placeholder="1.0" class="text-mono input-scale" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="reg-row-item">
+                <span class="reg-row-label">Level (mm)</span>
+                <div class="reg-inputs-pair">
+                  <div class="input-with-label">
+                    <span class="field-hint">Register</span>
+                    <input type="number" v-model="regLevel" min="0" max="65535" placeholder="misal: 14" class="text-mono input-addr" />
+                  </div>
+                  <div class="input-with-label">
+                    <span class="field-hint">Offset (Pengurang)</span>
+                    <input type="number" v-model="offsetLevel" step="any" placeholder="0.0" class="text-mono input-addr" />
+                  </div>
+                  <div class="input-with-label">
+                    <span class="field-hint">Skala (Pembagi)</span>
+                    <div class="scale-input-wrapper">
+                      <span class="mult-symbol">÷</span>
+                      <input type="number" v-model="scaleLevel" step="any" placeholder="1.0" class="text-mono input-scale" />
                     </div>
                   </div>
                 </div>

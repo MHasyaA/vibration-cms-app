@@ -6,6 +6,8 @@ import TrendLineChart from './components/TrendLineChart.vue';
 import DeviceModal from './components/DeviceModal.vue';
 import ModbusConfigModal from './components/ModbusConfigModal.vue';
 import ModbusRegisterModal from './components/ModbusRegisterModal.vue';
+import GaugeCard from './components/GaugeCard.vue';
+import LevelCard from './components/LevelCard.vue';
 import darkLogo from './assets/dark_logo.png';
 import lightLogo from './assets/light_logo.png';
 import { 
@@ -102,7 +104,20 @@ const filteredActiveAlarms = computed(() => {
     }
     if (alarmFilterParam.value !== 'all') {
       const p = alarm.parameter || '';
-      if (p.toLowerCase().replace(/\s+/g, '') !== alarmFilterParam.value.toLowerCase().replace(/\s+/g, '')) return false;
+      const normP = p.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const normF = alarmFilterParam.value.toLowerCase().replace(/[^a-z0-9]/g, '');
+      
+      const getNormalizedAlias = (s: string) => {
+        if (s === 'velocityz' || s === 'zvelocity') return 'zvel';
+        if (s === 'velocityx' || s === 'xvelocity') return 'xvel';
+        if (s === 'accelerationz' || s === 'zacceleration') return 'zacc';
+        if (s === 'accelerationx' || s === 'xacceleration') return 'xacc';
+        if (s === 'flowrate' || s === 'flow') return 'flow';
+        if (s === 'liquidlevel' || s === 'level') return 'level';
+        return s;
+      };
+      
+      if (getNormalizedAlias(normP) !== getNormalizedAlias(normF)) return false;
     }
     if (alarmFilterStartDate.value) {
       const start = new Date(alarmFilterStartDate.value).getTime();
@@ -126,7 +141,20 @@ const filteredAlarmHistory = computed(() => {
     }
     if (alarmFilterParam.value !== 'all') {
       const p = alarm.parameter || '';
-      if (p.toLowerCase().replace(/\s+/g, '') !== alarmFilterParam.value.toLowerCase().replace(/\s+/g, '')) return false;
+      const normP = p.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const normF = alarmFilterParam.value.toLowerCase().replace(/[^a-z0-9]/g, '');
+      
+      const getNormalizedAlias = (s: string) => {
+        if (s === 'velocityz' || s === 'zvelocity') return 'zvel';
+        if (s === 'velocityx' || s === 'xvelocity') return 'xvel';
+        if (s === 'accelerationz' || s === 'zacceleration') return 'zacc';
+        if (s === 'accelerationx' || s === 'xacceleration') return 'xacc';
+        if (s === 'flowrate' || s === 'flow') return 'flow';
+        if (s === 'liquidlevel' || s === 'level') return 'level';
+        return s;
+      };
+      
+      if (getNormalizedAlias(normP) !== getNormalizedAlias(normF)) return false;
     }
     if (alarmFilterStartDate.value) {
       const start = new Date(alarmFilterStartDate.value).getTime();
@@ -532,7 +560,10 @@ async function fetchAnalyticsSummary() {
         zVelocity: d.setpointZVel || 7.1,
         xVelocity: d.setpointXVel || 7.1,
         zAcceleration: d.setpointZAcc || 10,
-        xAcceleration: d.setpointXAcc || 10
+        xAcceleration: d.setpointXAcc || 10,
+        pressure: d.setpointPressure || 5.0,
+        flow: d.setpointFlow || 50.0,
+        level: d.setpointLevel || 800.0
       };
       
       const readings = {
@@ -540,7 +571,10 @@ async function fetchAnalyticsSummary() {
         zVelocity: tel.zVelocity || 0,
         xVelocity: tel.xVelocity || 0,
         zAcceleration: tel.zAcceleration || 0,
-        xAcceleration: tel.xAcceleration || 0
+        xAcceleration: tel.xAcceleration || 0,
+        pressure: tel.pressure || 0,
+        flow: tel.flow || 0,
+        level: tel.level || 0
       };
       
       let maxRatio = 0;
@@ -551,7 +585,12 @@ async function fetchAnalyticsSummary() {
       for (const [key, value] of Object.entries(readings)) {
         const limit = (limits as any)[key];
         if (limit > 0) {
-          const ratio = (value / limit) * 100;
+          let ratio = 0;
+          if (key === 'level') {
+            ratio = value < limit ? ((limit - value) / limit) * 100 : 0;
+          } else {
+            ratio = (value / limit) * 100;
+          }
           if (ratio > maxRatio) {
             maxRatio = ratio;
             worstParam = key;
@@ -699,6 +738,37 @@ async function acknowledgeAlarm(alarmId: number) {
   }
 }
 
+async function acknowledgeAllAlarms() {
+  if (!confirm('Apakah Anda yakin ingin mengonfirmasi (acknowledge) semua alarm aktif?')) return;
+  
+  if (isDummyMode.value) {
+    activeAlarms.value.forEach((alarm: any) => {
+      alarmHistory.value = [{ ...alarm, status: 'acknowledged' }, ...alarmHistory.value];
+    });
+    activeAlarms.value = [];
+    activeAlarmsCount.value = 0;
+    return;
+  }
+  try {
+    const res = await fetch('/api/alarms/acknowledge-all', {
+      method: 'PUT',
+      headers: getHeaders()
+    });
+    const result = await res.json();
+    if (result.success) {
+      await loadAllData();
+      if (selectedDeviceId.value !== null) {
+        await fetchHistoricalTrend(selectedDeviceId.value);
+      }
+    } else {
+      alert(`Gagal mengonfirmasi semua alarm: ${result.message}`);
+    }
+  } catch (err) {
+    console.error('Failed to acknowledge all alarms:', err);
+    alert('Terjadi kesalahan koneksi saat mengonfirmasi semua alarm');
+  }
+}
+
 // --- CRUD Device Actions ---
 async function handleSaveDevice(payload: any) {
   // Dummy mode: simulate CRUD in local state
@@ -818,18 +888,55 @@ function getDeviceStatus(deviceId: number) {
   const tel = getDeviceTelemetry(deviceId);
   const dev = devicesList.value.find(d => d.id === deviceId);
   
-  if (!tel || !dev || tel.temperature === null || tel.zVelocity === null) return 'unknown';
+  if (!tel || !dev) return 'unknown';
   
-  const tempLimit = dev.setpointTemp || 70;
-  const zVelLimit = dev.setpointZVel || 7.1;
-  const xVelLimit = dev.setpointXVel || 7.1;
+  const limits = {
+    temperature: dev.setpointTemp || 70,
+    zVelocity: dev.setpointZVel || 7.1,
+    xVelocity: dev.setpointXVel || 7.1,
+    zAcceleration: dev.setpointZAcc || 10,
+    xAcceleration: dev.setpointXAcc || 10,
+    pressure: dev.setpointPressure || 5.0,
+    flow: dev.setpointFlow || 50.0,
+    level: dev.setpointLevel || 800.0,
+  };
   
-  const t = tel.temperature || 0;
-  const zv = tel.zVelocity || 0;
-  const xv = tel.xVelocity || 0;
+  const readings = {
+    temperature: tel.temperature,
+    zVelocity: tel.zVelocity,
+    xVelocity: tel.xVelocity,
+    zAcceleration: tel.zAcceleration,
+    xAcceleration: tel.xAcceleration,
+    pressure: tel.pressure,
+    flow: tel.flow,
+    level: tel.level,
+  };
   
-  if (t >= tempLimit || zv >= zVelLimit || xv >= xVelLimit) return 'critical';
-  if (t >= tempLimit * 0.8 || zv >= zVelLimit * 0.7 || xv >= xVelLimit * 0.7) return 'warning';
+  let isCritical = false;
+  let isWarning = false;
+  
+  for (const [key, value] of Object.entries(readings)) {
+    if (value === null || value === undefined) continue;
+    const limit = (limits as any)[key];
+    if (limit <= 0) continue;
+    
+    if (key === 'level') {
+      if (value < limit) {
+        isCritical = true;
+      } else if (value < limit * 1.25) {
+        isWarning = true;
+      }
+    } else {
+      if (value >= limit) {
+        isCritical = true;
+      } else if (value >= limit * 0.8) {
+        isWarning = true;
+      }
+    }
+  }
+  
+  if (isCritical) return 'critical';
+  if (isWarning) return 'warning';
   return 'safe';
 }
 
@@ -862,6 +969,14 @@ function formatDate(isoString: string) {
   if (!isoString) return '--/--/----';
   const d = new Date(isoString);
   return d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatLastUpdate(isoString: string) {
+  if (!isoString) return '--/--/----';
+  const d = new Date(isoString);
+  // Tambah 7 jam khusus untuk data Last Update
+  const wibDate = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+  return wibDate.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + wibDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 }
 
 // --- Live Clock ---
@@ -1329,7 +1444,7 @@ onUnmounted(() => {
                 <div class="status-wrapper" style="text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
                   <span class="status-text">{{ getDeviceStatus(d.id).toUpperCase() }}</span>
                   <div class="last-update-hint" v-if="getDeviceStatus(d.id) === 'unknown' && getDeviceTelemetry(d.id)?.timestamp">
-                    Last Update: {{ formatDate(getDeviceTelemetry(d.id).timestamp) }}
+                    Last Update: {{ formatLastUpdate(getDeviceTelemetry(d.id).timestamp) }}
                   </div>
                 </div>
               </div>
@@ -1354,6 +1469,18 @@ onUnmounted(() => {
                 <div class="tel-col accx">
                   <span class="label">ACC X</span>
                   <span class="num text-mono">{{ getDeviceTelemetry(d.id).xAcceleration?.toFixed(2) ?? '--' }} <span class="u">mm/s²</span></span>
+                </div>
+                <div class="tel-col press">
+                  <span class="label">PRESS</span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).pressure?.toFixed(1) ?? '--' }} <span class="u">Bar</span></span>
+                </div>
+                <div class="tel-col flow">
+                  <span class="label">FLOW</span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).flow?.toFixed(1) ?? '--' }} <span class="u">L/m</span></span>
+                </div>
+                <div class="tel-col level-col">
+                  <span class="label">LEVEL</span>
+                  <span class="num text-mono">{{ getDeviceTelemetry(d.id).level?.toFixed(0) ?? '--' }} <span class="u">mm</span></span>
                 </div>
               </div>
               <div class="telemetry-block empty-block" v-else>
@@ -1616,7 +1743,28 @@ onUnmounted(() => {
                   icon="<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z'/></svg>"
                   style="grid-column: span 2;"
                 />
+                <GaugeCard 
+                  title="Pressure"
+                  :value="selectedDeviceTelemetry?.pressure"
+                  unit="Bar"
+                  :setpoint="selectedDeviceDetails.setpointPressure"
+                  icon="<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><path d='M12 6v6l4 2'/></svg>"
+                />
+                <GaugeCard 
+                  title="Flow Rate"
+                  :value="selectedDeviceTelemetry?.flow"
+                  unit="L/min"
+                  :setpoint="selectedDeviceDetails.setpointFlow"
+                  icon="<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'/></svg>"
+                />
               </div>
+              <LevelCard 
+                title="Liquid Level"
+                :value="selectedDeviceTelemetry?.level"
+                unit="mm"
+                :setpoint="selectedDeviceDetails.setpointLevel"
+                icon="<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 22a7 7 0 0 0 5-12.2l-5-5.8-5 5.8A7 7 0 0 0 12 22z'/></svg>"
+              />
             </div>
             
             <!-- Bottom Section: Historical Trend -->
@@ -1628,6 +1776,9 @@ onUnmounted(() => {
                 :setpointXVel="selectedDeviceDetails.setpointXVel"
                 :setpointZAcc="selectedDeviceDetails.setpointZAcc"
                 :setpointXAcc="selectedDeviceDetails.setpointXAcc"
+                :setpointPressure="selectedDeviceDetails.setpointPressure"
+                :setpointFlow="selectedDeviceDetails.setpointFlow"
+                :setpointLevel="selectedDeviceDetails.setpointLevel"
                 :isDarkTheme="false"
                 @range-change="handleRangeChange"
               />
@@ -1663,6 +1814,9 @@ onUnmounted(() => {
                   <option value="velocity x">Velocity X</option>
                   <option value="acceleration z">Acceleration Z</option>
                   <option value="acceleration x">Acceleration X</option>
+                  <option value="pressure">Pressure</option>
+                  <option value="flow">Flow Rate</option>
+                  <option value="level">Liquid Level</option>
                 </select>
               </div>
 
@@ -1688,11 +1842,21 @@ onUnmounted(() => {
           <div class="alarm-view-layout">
             <!-- Active Alarms Card -->
             <div class="glass-panel table-panel">
-              <div class="panel-header">
-                <h3>Alarm Aktif (Butuh Konfirmasi)</h3>
-                <span class="alarm-badge critical" v-if="filteredActiveAlarms.length > 0">
-                  {{ filteredActiveAlarms.length }} KRITIS
-                </span>
+              <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <h3>Alarm Aktif (Butuh Konfirmasi)</h3>
+                  <span class="alarm-badge critical" v-if="filteredActiveAlarms.length > 0">
+                    {{ filteredActiveAlarms.length }} KRITIS
+                  </span>
+                </div>
+                <button 
+                  v-if="filteredActiveAlarms.length > 0" 
+                  @click="acknowledgeAllAlarms" 
+                  class="btn-add-device"
+                  style="font-size: 0.75rem; padding: 6px 12px;"
+                >
+                  Konfirmasi Semua (Acknowledge All)
+                </button>
               </div>
               
               <div class="table-wrapper">
@@ -1796,12 +1960,15 @@ onUnmounted(() => {
                     <th>Vel-X Limit</th>
                     <th>Acc-Z Limit</th>
                     <th>Acc-X Limit</th>
+                    <th>Press Limit</th>
+                    <th>Flow Limit</th>
+                    <th>Lev Limit</th>
                     <th v-if="userRole === 'admin'">Tindakan</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-if="devicesList.length === 0">
-                    <td colspan="9" class="empty-row">Belum ada perangkat terdaftar di sistem.</td>
+                    <td colspan="12" class="empty-row">Belum ada perangkat terdaftar di sistem.</td>
                   </tr>
                   <tr v-for="d in devicesList" :key="d.id">
                     <td class="text-mono text-gradient">#{{ d.slaveId }}</td>
@@ -1812,6 +1979,9 @@ onUnmounted(() => {
                     <td class="text-mono">{{ d.setpointXVel }} mm/s</td>
                     <td class="text-mono">{{ d.setpointZAcc }} mm/s²</td>
                     <td class="text-mono">{{ d.setpointXAcc }} mm/s²</td>
+                    <td class="text-mono">{{ d.setpointPressure }} Bar</td>
+                    <td class="text-mono">{{ d.setpointFlow }} L/min</td>
+                    <td class="text-mono">{{ d.setpointLevel }} mm</td>
                     <td v-if="userRole === 'admin'">
                       <div class="action-btns">
                         <button @click="openEditDeviceModal(d)" class="edit-btn">EDIT</button>
@@ -1912,6 +2082,9 @@ onUnmounted(() => {
                     <th>Reg. Vel-X</th>
                     <th>Reg. Acc-Z</th>
                     <th>Reg. Acc-X</th>
+                    <th>Reg. Pressure</th>
+                    <th>Reg. Flow</th>
+                    <th>Reg. Level</th>
                     <th>Data Type</th>
                     <th>Byte Order</th>
                     <th>Aksi</th>
@@ -1919,7 +2092,7 @@ onUnmounted(() => {
                 </thead>
                 <tbody>
                   <tr v-if="devicesList.length === 0">
-                    <td colspan="11" class="empty-row">Belum ada perangkat terdaftar. Tambahkan device di Device Manager terlebih dahulu.</td>
+                    <td colspan="14" class="empty-row">Belum ada perangkat terdaftar. Tambahkan device di Device Manager terlebih dahulu.</td>
                   </tr>
                   <tr v-for="d in devicesList" :key="d.id">
                     <td class="text-mono text-gradient">#{{ d.slaveId }}</td>
@@ -1980,6 +2153,45 @@ onUnmounted(() => {
                         </span>
                         <span v-if="d.regXAcc !== null && d.regXAcc !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.xAcceleration)">
                           {{ getHintValue(getDeviceTelemetry(d.id)?.xAcceleration, 2) }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="text-mono">
+                      <div class="reg-cell-wrapper">
+                        <span class="reg-addr">
+                          {{ d.regPressure !== null && d.regPressure !== undefined ? d.regPressure : '—' }}
+                          <span v-if="d.regPressure !== null && d.regPressure !== undefined && ((d.scalePressure !== null && d.scalePressure !== undefined && d.scalePressure !== 1) || (d.offsetPressure !== null && d.offsetPressure !== undefined && d.offsetPressure !== 0))" class="reg-scale-hint">
+                            ({{ d.offsetPressure ? 'raw-' + d.offsetPressure : 'raw' }})/{{ d.scalePressure }}
+                          </span>
+                        </span>
+                        <span v-if="d.regPressure !== null && d.regPressure !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.pressure)">
+                          {{ getHintValue(getDeviceTelemetry(d.id)?.pressure, 2) }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="text-mono">
+                      <div class="reg-cell-wrapper">
+                        <span class="reg-addr">
+                          {{ d.regFlow !== null && d.regFlow !== undefined ? d.regFlow : '—' }}
+                          <span v-if="d.regFlow !== null && d.regFlow !== undefined && ((d.scaleFlow !== null && d.scaleFlow !== undefined && d.scaleFlow !== 1) || (d.offsetFlow !== null && d.offsetFlow !== undefined && d.offsetFlow !== 0))" class="reg-scale-hint">
+                            ({{ d.offsetFlow ? 'raw-' + d.offsetFlow : 'raw' }})/{{ d.scaleFlow }}
+                          </span>
+                        </span>
+                        <span v-if="d.regFlow !== null && d.regFlow !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.flow)">
+                          {{ getHintValue(getDeviceTelemetry(d.id)?.flow, 1) }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="text-mono">
+                      <div class="reg-cell-wrapper">
+                        <span class="reg-addr">
+                          {{ d.regLevel !== null && d.regLevel !== undefined ? d.regLevel : '—' }}
+                          <span v-if="d.regLevel !== null && d.regLevel !== undefined && ((d.scaleLevel !== null && d.scaleLevel !== undefined && d.scaleLevel !== 1) || (d.offsetLevel !== null && d.offsetLevel !== undefined && d.offsetLevel !== 0))" class="reg-scale-hint">
+                            ({{ d.offsetLevel ? 'raw-' + d.offsetLevel : 'raw' }})/{{ d.scaleLevel }}
+                          </span>
+                        </span>
+                        <span v-if="d.regLevel !== null && d.regLevel !== undefined" class="reg-hint" :class="getHintClass(getDeviceTelemetry(d.id)?.level)">
+                          {{ getHintValue(getDeviceTelemetry(d.id)?.level, 0) }}
                         </span>
                       </div>
                     </td>
@@ -2975,10 +3187,11 @@ onUnmounted(() => {
 
 .telemetry-block {
   display: grid;
-  grid-template-columns: auto 1fr 1fr;
+  grid-template-columns: auto 1fr 1fr 1fr;
   grid-template-areas: 
-    "temp vibz accz"
-    "temp vibx accx";
+    "temp vibz accz press"
+    "temp vibx accx flow"
+    "temp level-col . .";
   gap: 12px;
   background: var(--bg-input);
   padding: 12px;
@@ -3012,6 +3225,9 @@ onUnmounted(() => {
 .tel-col.accz { grid-area: accz; }
 .tel-col.vibx { grid-area: vibx; }
 .tel-col.accx { grid-area: accx; }
+.tel-col.press { grid-area: press; }
+.tel-col.flow { grid-area: flow; }
+.tel-col.level-col { grid-area: level-col; }
 
 .telemetry-block .tel-col .label {
   font-size: 0.65rem;
@@ -3066,7 +3282,7 @@ onUnmounted(() => {
 
 .detail-top-section {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1.2fr 1.2fr 0.3fr;
   gap: 16px;
 }
 

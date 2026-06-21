@@ -42,6 +42,9 @@ export const dataController = new Elysia({ prefix: "/data" })
               xVelocity: null,
               zAcceleration: null,
               xAcceleration: null,
+              pressure: null,
+              flow: null,
+              level: null,
             };
           }
           return item;
@@ -132,6 +135,9 @@ export const dataController = new Elysia({ prefix: "/data" })
         xVelocity: t.Number(),
         zAcceleration: t.Number(),
         xAcceleration: t.Number(),
+        pressure: t.Number(),
+        flow: t.Number(),
+        level: t.Number(),
       }),
     }
   );
