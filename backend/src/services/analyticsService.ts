@@ -125,7 +125,7 @@ export class AnalyticsService {
           const limit = (limits as any)[key];
           if (limit <= 0) continue;
 
-          if (key === "level") {
+          if (key === "level" || key === "pressure" || key === "flow") {
             if (value < limit) {
               isCritical = true;
             } else if (value < limit * 1.25) {
