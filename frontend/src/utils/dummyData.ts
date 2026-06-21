@@ -42,8 +42,8 @@ export const DUMMY_DEVICES = [
     setpointXVel: 7.5,
     setpointZAcc: 12.0,
     setpointXAcc: 12.0,
-    setpointPressure: 6.0,
-    setpointFlow: 60.0,
+    setpointPressure: 2.0,
+    setpointFlow: 20.0,
     setpointLevel: 500.0
   },
   {
@@ -57,8 +57,8 @@ export const DUMMY_DEVICES = [
     setpointXVel: 5.0,
     setpointZAcc: 8.0,
     setpointXAcc: 8.0,
-    setpointPressure: 4.0,
-    setpointFlow: 40.0,
+    setpointPressure: 2.0,
+    setpointFlow: 15.0,
     setpointLevel: 400.0
   },
   {
@@ -72,8 +72,8 @@ export const DUMMY_DEVICES = [
     setpointXVel: 9.0,
     setpointZAcc: 15.0,
     setpointXAcc: 15.0,
-    setpointPressure: 8.0,
-    setpointFlow: 100.0,
+    setpointPressure: 10.0,
+    setpointFlow: 120.0,
     setpointLevel: 1500.0
   },
   {
@@ -87,8 +87,8 @@ export const DUMMY_DEVICES = [
     setpointXVel: 6.0,
     setpointZAcc: 10.0,
     setpointXAcc: 10.0,
-    setpointPressure: 5.0,
-    setpointFlow: 50.0,
+    setpointPressure: 2.0,
+    setpointFlow: 15.0,
     setpointLevel: 500.0
   },
   {
@@ -102,8 +102,8 @@ export const DUMMY_DEVICES = [
     setpointXVel: 4.5,
     setpointZAcc: 7.0,
     setpointXAcc: 7.0,
-    setpointPressure: 5.0,
-    setpointFlow: 35.0,
+    setpointPressure: 2.0,
+    setpointFlow: 15.0,
     setpointLevel: 400.0
   }
 ];
