@@ -41,6 +41,14 @@ export class AlarmService {
     return updated;
   }
 
+  async acknowledgeAllAlarms() {
+    return await db
+      .update(alarms)
+      .set({ status: "acknowledged" })
+      .where(eq(alarms.status, "active"))
+      .returning();
+  }
+
   // Evaluates a new sensor log reading against configured device setpoints.
   // Triggers/records alarms when a threshold is breached, preventing duplicate active alarms.
   async checkAndTriggerAlarms(
@@ -51,6 +59,9 @@ export class AlarmService {
       xVelocity: number;
       zAcceleration: number;
       xAcceleration: number;
+      pressure: number;
+      flow: number;
+      level: number;
     }
   ) {
     // 1. Fetch the device setpoints
@@ -81,6 +92,9 @@ export class AlarmService {
     checkBreach("xVelocity", readings.xVelocity, device.setpointXVel);
     checkBreach("zAcceleration", readings.zAcceleration, device.setpointZAcc);
     checkBreach("xAcceleration", readings.xAcceleration, device.setpointXAcc);
+    checkBreach("pressure", readings.pressure, device.setpointPressure);
+    checkBreach("flow", readings.flow, device.setpointFlow);
+    checkBreach("level", readings.level, device.setpointLevel);
 
     const triggeredAlarms = [];
 

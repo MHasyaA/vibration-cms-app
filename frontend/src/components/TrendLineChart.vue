@@ -10,12 +10,18 @@ const props = defineProps<{
     xVelocity: number;
     zAcceleration: number;
     xAcceleration: number;
+    pressure?: number;
+    flow?: number;
+    level?: number;
   }>;
   setpointTemp: number | null | undefined;
   setpointZVel: number | null | undefined;
   setpointXVel: number | null | undefined;
   setpointZAcc: number | null | undefined;
   setpointXAcc: number | null | undefined;
+  setpointPressure?: number | null | undefined;
+  setpointFlow?: number | null | undefined;
+  setpointLevel?: number | null | undefined;
   isDarkTheme: boolean;
 }>();
 
@@ -23,12 +29,26 @@ const emit = defineEmits<{
   (e: 'range-change', payload: { start?: string; end?: string }): void;
 }>();
 
-type TabType = 'velZ' | 'velX' | 'accZ' | 'accX' | 'temp';
+type TabType = 'velZ' | 'velX' | 'accZ' | 'accX' | 'temp' | 'pressure' | 'flow' | 'level' | 'correlation';
 const activeTab = ref<TabType>('velZ');
 
 const timeRange = ref<'last_hour' | 'last_day' | 'last_week' | 'last_month' | 'custom'>('last_hour');
 const customStart = ref('');
 const customEnd = ref('');
+
+// Checked parameters in Correlation mode
+const selectedParams = ref<string[]>(['velZ', 'temp', 'pressure']);
+
+const checkboxOptions = [
+  { val: 'velZ', label: 'Velocity Z (mm/s)', unit: 'mm/s', color: '#6366f1' },
+  { val: 'velX', label: 'Velocity X (mm/s)', unit: 'mm/s', color: '#a855f7' },
+  { val: 'accZ', label: 'Accel Z (mm/s²)', unit: 'mm/s²', color: '#ec4899' },
+  { val: 'accX', label: 'Accel X (mm/s²)', unit: 'mm/s²', color: '#f43f5e' },
+  { val: 'temp', label: 'Temperature (°C)', unit: '°C', color: '#eab308' },
+  { val: 'pressure', label: 'Pressure (Bar)', unit: 'Bar', color: '#00d2ff' },
+  { val: 'flow', label: 'Flow (L/min)', unit: 'L/min', color: '#10b981' },
+  { val: 'level', label: 'Level (mm)', unit: 'mm', color: '#3b82f6' },
+];
 
 function applyDateRange() {
   let start: string | undefined = undefined;
@@ -64,7 +84,17 @@ const sortedLogs = computed(() => {
 function exportToCSV() {
   if (props.logs.length === 0) return;
   
-  const headers = ['Timestamp', 'Core Temperature (°C)', 'Z-Axis Velocity (mm/s)', 'X-Axis Velocity (mm/s)', 'Z-Axis Acceleration (mm/s²)', 'X-Axis Acceleration (mm/s²)'];
+  const headers = [
+    'Timestamp', 
+    'Core Temperature (°C)', 
+    'Z-Axis Velocity (mm/s)', 
+    'X-Axis Velocity (mm/s)', 
+    'Z-Axis Acceleration (mm/s²)', 
+    'X-Axis Acceleration (mm/s²)',
+    'Pressure (Bar)',
+    'Flow Rate (L/min)',
+    'Liquid Level (mm)'
+  ];
   
   const rows = sortedLogs.value.map(log => {
     const formattedDate = new Date(log.timestamp).toLocaleString('id-ID').replace(',', '');
@@ -74,7 +104,10 @@ function exportToCSV() {
       log.zVelocity.toFixed(2),
       log.xVelocity.toFixed(2),
       log.zAcceleration.toFixed(2),
-      log.xAcceleration.toFixed(2)
+      log.xAcceleration.toFixed(2),
+      (log.pressure ?? 0).toFixed(2),
+      (log.flow ?? 0).toFixed(2),
+      (log.level ?? 0).toFixed(0)
     ].join(',');
   });
   
@@ -98,7 +131,53 @@ const categories = computed(() => {
   });
 });
 
-const seriesData = computed(() => {
+const series = computed(() => {
+  if (activeTab.value !== 'correlation') {
+    let name = '';
+    let data: number[] = [];
+    switch(activeTab.value) {
+      case 'velZ': name = 'Velocity Z'; data = sortedLogs.value.map(l => Number(l.zVelocity?.toFixed(2) ?? 0)); break;
+      case 'velX': name = 'Velocity X'; data = sortedLogs.value.map(l => Number(l.xVelocity?.toFixed(2) ?? 0)); break;
+      case 'accZ': name = 'Accel Z'; data = sortedLogs.value.map(l => Number(l.zAcceleration?.toFixed(2) ?? 0)); break;
+      case 'accX': name = 'Accel X'; data = sortedLogs.value.map(l => Number(l.xAcceleration?.toFixed(2) ?? 0)); break;
+      case 'temp': name = 'Temperature'; data = sortedLogs.value.map(l => Number(l.temperature?.toFixed(1) ?? 0)); break;
+      case 'pressure': name = 'Pressure'; data = sortedLogs.value.map(l => Number((l.pressure ?? 0).toFixed(2))); break;
+      case 'flow': name = 'Flow Rate'; data = sortedLogs.value.map(l => Number((l.flow ?? 0).toFixed(2))); break;
+      case 'level': name = 'Liquid Level'; data = sortedLogs.value.map(l => Number((l.level ?? 0).toFixed(0))); break;
+    }
+    return [{ name, data }];
+  } else {
+    // Correlation Mode: Return multiple checked parameters
+    return checkboxOptions
+      .filter(opt => selectedParams.value.includes(opt.val))
+      .map(opt => {
+        let data: number[] = [];
+        switch(opt.val) {
+          case 'velZ': data = sortedLogs.value.map(l => Number(l.zVelocity?.toFixed(2) ?? 0)); break;
+          case 'velX': data = sortedLogs.value.map(l => Number(l.xVelocity?.toFixed(2) ?? 0)); break;
+          case 'accZ': data = sortedLogs.value.map(l => Number(l.zAcceleration?.toFixed(2) ?? 0)); break;
+          case 'accX': data = sortedLogs.value.map(l => Number(l.xAcceleration?.toFixed(2) ?? 0)); break;
+          case 'temp': data = sortedLogs.value.map(l => Number(l.temperature?.toFixed(1) ?? 0)); break;
+          case 'pressure': data = sortedLogs.value.map(l => Number((l.pressure ?? 0).toFixed(2))); break;
+          case 'flow': data = sortedLogs.value.map(l => Number((l.flow ?? 0).toFixed(2))); break;
+          case 'level': data = sortedLogs.value.map(l => Number((l.level ?? 0).toFixed(0))); break;
+        }
+        return { name: opt.label, data };
+      });
+  }
+});
+
+const yUnit = computed(() => {
+  if (activeTab.value.startsWith('vel')) return 'mm/s';
+  if (activeTab.value.startsWith('acc')) return 'mm/s²';
+  if (activeTab.value === 'temp') return '°C';
+  if (activeTab.value === 'pressure') return 'Bar';
+  if (activeTab.value === 'flow') return 'L/min';
+  if (activeTab.value === 'level') return 'mm';
+  return '';
+});
+
+const seriesDataForSingle = computed(() => {
   return sortedLogs.value.map(l => {
     switch(activeTab.value) {
       case 'velZ': return Number(l.zVelocity.toFixed(2));
@@ -106,13 +185,17 @@ const seriesData = computed(() => {
       case 'accZ': return Number(l.zAcceleration.toFixed(2));
       case 'accX': return Number(l.xAcceleration.toFixed(2));
       case 'temp': return Number(l.temperature.toFixed(1));
+      case 'pressure': return Number((l.pressure ?? 0).toFixed(2));
+      case 'flow': return Number((l.flow ?? 0).toFixed(2));
+      case 'level': return Number((l.level ?? 0).toFixed(0));
       default: return 0;
     }
   });
 });
 
 const stats = computed(() => {
-  const data = seriesData.value;
+  if (activeTab.value === 'correlation') return null;
+  const data = seriesDataForSingle.value;
   if (data.length === 0) return null;
   const min = Math.min(...data);
   const max = Math.max(...data);
@@ -120,27 +203,10 @@ const stats = computed(() => {
   return { min, max, avg: Number(avg.toFixed(2)) };
 });
 
-const series = computed(() => {
-  let name = '';
-  switch(activeTab.value) {
-    case 'velZ': name = 'Z-Axis Velocity'; break;
-    case 'velX': name = 'X-Axis Velocity'; break;
-    case 'accZ': name = 'Z-Axis Acceleration'; break;
-    case 'accX': name = 'X-Axis Acceleration'; break;
-    case 'temp': name = 'Core Temperature'; break;
-  }
-  return [{ name, data: seriesData.value }];
-});
-
-const yUnit = computed(() => {
-  if (activeTab.value.startsWith('vel')) return 'mm/s';
-  if (activeTab.value.startsWith('acc')) return 'mm/s²';
-  return '°C';
-});
-
 // Dynamic limit annotations based on setpoints
 const yAnnotations = computed(() => {
   const annotations: any[] = [];
+  if (activeTab.value === 'correlation') return annotations;
   
   let limitValue = 0;
   let limitLabel = '';
@@ -151,6 +217,9 @@ const yAnnotations = computed(() => {
     case 'accZ': limitValue = props.setpointZAcc || 10.0; limitLabel = 'Z-Acc Limit'; break;
     case 'accX': limitValue = props.setpointXAcc || 10.0; limitLabel = 'X-Acc Limit'; break;
     case 'temp': limitValue = props.setpointTemp || 70.0; limitLabel = 'Temp Limit'; break;
+    case 'pressure': limitValue = props.setpointPressure || 5.0; limitLabel = 'Press Limit'; break;
+    case 'flow': limitValue = props.setpointFlow || 50.0; limitLabel = 'Flow Limit'; break;
+    case 'level': limitValue = props.setpointLevel || 800.0; limitLabel = 'Level Limit'; break;
   }
 
   // 1. Setpoint Annotation
@@ -173,7 +242,7 @@ const yAnnotations = computed(() => {
     // 2. Max Annotation (Orange)
     annotations.push({
       y: max,
-      borderColor: '#f97316', // Orange-500
+      borderColor: '#f97316',
       borderWidth: 2,
       strokeDashArray: 2,
       label: {
@@ -188,7 +257,7 @@ const yAnnotations = computed(() => {
     // 3. Avg Annotation (Blue)
     annotations.push({
       y: avg,
-      borderColor: '#0ea5e9', // Sky-500
+      borderColor: '#0ea5e9',
       borderWidth: 2,
       strokeDashArray: 2,
       label: {
@@ -203,7 +272,7 @@ const yAnnotations = computed(() => {
     // 4. Min Annotation (Green)
     annotations.push({
       y: min,
-      borderColor: '#10b981', // Emerald-500
+      borderColor: '#10b981',
       borderWidth: 2,
       strokeDashArray: 2,
       label: {
@@ -219,13 +288,78 @@ const yAnnotations = computed(() => {
   return annotations;
 });
 
+const chartYAxis = computed(() => {
+  const isDark = props.isDarkTheme;
+  const labelColor = isDark ? '#94a3b8' : '#475569';
+
+  if (activeTab.value !== 'correlation') {
+    return {
+      labels: {
+        style: { colors: labelColor, fontFamily: 'Outfit, sans-serif' },
+        formatter: (val: number) => `${val.toFixed(1)} ${yUnit.value}`,
+      },
+    };
+  } else {
+    const activeOpts = checkboxOptions.filter(opt => selectedParams.value.includes(opt.val));
+    if (activeOpts.length === 0) return { show: false };
+
+    // Align each series to its own scale, showing axis for first 2 unique units
+    const seenUnits: string[] = [];
+    return activeOpts.map((opt) => {
+      let show = false;
+      let opposite = false;
+      
+      if (!seenUnits.includes(opt.unit)) {
+        seenUnits.push(opt.unit);
+        show = true;
+        if (seenUnits.length === 2) {
+          opposite = true;
+        } else if (seenUnits.length > 2) {
+          show = false; // Hide additional axis lines to prevent clutter, but keep independent scaling
+        }
+      }
+
+      return {
+        seriesName: opt.label,
+        show: show,
+        opposite: opposite,
+        title: {
+          text: show ? opt.unit : undefined,
+          style: { color: opt.color, fontFamily: 'Outfit, sans-serif', fontWeight: 600 },
+        },
+        labels: {
+          style: { colors: opt.color, fontFamily: 'Outfit, sans-serif' },
+          formatter: (val: number) => `${val.toFixed(1)}`,
+        },
+        axisBorder: {
+          show: show,
+          color: opt.color,
+        },
+        axisTicks: {
+          show: show,
+          color: opt.color,
+        },
+      };
+    });
+  }
+});
+
+const chartColors = computed(() => {
+  if (activeTab.value !== 'correlation') {
+    return ['#00d2ff'];
+  } else {
+    return checkboxOptions
+      .filter(opt => selectedParams.value.includes(opt.val))
+      .map(opt => opt.color);
+  }
+});
+
 // Dynamic options for ApexCharts
 const chartOptions = computed(() => {
   const isDark = props.isDarkTheme;
   const chartTheme = (isDark ? 'dark' : 'light') as 'dark' | 'light';
   const gridColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
   const labelColor = isDark ? '#94a3b8' : '#475569';
-  const accentColors = ['#0052cc'];
 
   return {
     chart: {
@@ -242,10 +376,10 @@ const chartOptions = computed(() => {
     theme: {
       mode: chartTheme,
     },
-    colors: accentColors,
+    colors: chartColors.value,
     stroke: {
       curve: 'smooth' as const,
-      width: 3,
+      width: activeTab.value === 'correlation' ? 2 : 3,
     },
     grid: {
       borderColor: gridColor,
@@ -260,12 +394,7 @@ const chartOptions = computed(() => {
       axisBorder: { show: false },
       axisTicks: { show: false },
     },
-    yaxis: {
-      labels: {
-        style: { colors: labelColor, fontFamily: 'Outfit, sans-serif' },
-        formatter: (val: number) => `${val.toFixed(1)} ${yUnit.value}`,
-      },
-    },
+    yaxis: chartYAxis.value,
     annotations: {
       yaxis: yAnnotations.value,
     },
@@ -273,7 +402,14 @@ const chartOptions = computed(() => {
       theme: chartTheme,
       x: { show: true },
       y: {
-        formatter: (val: number) => `${val} ${yUnit.value}`,
+        formatter: (val: number, { seriesIndex }: any) => {
+          if (activeTab.value !== 'correlation') {
+            return `${val} ${yUnit.value}`;
+          }
+          const activeOpts = checkboxOptions.filter(opt => selectedParams.value.includes(opt.val));
+          const unit = activeOpts[seriesIndex]?.unit || '';
+          return `${val} ${unit}`;
+        },
       },
     },
     legend: {
@@ -291,14 +427,15 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="trend-chart-card glass-panel">
+  <div class="trend-chart-card glass-panel flex-col" style="height: 100%; gap: 16px;">
     <div class="card-header">
       <div class="title-group">
         <span class="chart-icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
         </span>
-        <h3>Grafik Tren Historis</h3>
+        <h3>Grafik Tren Historis CMS</h3>
       </div>
+      
       <!-- Date Range Controls -->
       <div class="range-controls">
         <select v-model="timeRange" class="range-select">
@@ -323,21 +460,40 @@ onMounted(() => {
       </div>
       
       <!-- Parameter Tabs -->
-      <div class="tabs-container">
+      <div class="tabs-container" style="flex-wrap: wrap; gap: 4px;">
         <button @click="activeTab = 'velZ'" class="tab-btn" :class="{ active: activeTab === 'velZ' }">Vel Z</button>
         <button @click="activeTab = 'velX'" class="tab-btn" :class="{ active: activeTab === 'velX' }">Vel X</button>
         <button @click="activeTab = 'accZ'" class="tab-btn" :class="{ active: activeTab === 'accZ' }">Acc Z</button>
         <button @click="activeTab = 'accX'" class="tab-btn" :class="{ active: activeTab === 'accX' }">Acc X</button>
         <button @click="activeTab = 'temp'" class="tab-btn" :class="{ active: activeTab === 'temp' }">Temp</button>
+        <button @click="activeTab = 'pressure'" class="tab-btn" :class="{ active: activeTab === 'pressure' }">Pressure</button>
+        <button @click="activeTab = 'flow'" class="tab-btn" :class="{ active: activeTab === 'flow' }">Flow</button>
+        <button @click="activeTab = 'level'" class="tab-btn" :class="{ active: activeTab === 'level' }">Level</button>
+        <button @click="activeTab = 'correlation'" class="tab-btn tab-btn-special" :class="{ active: activeTab === 'correlation' }">🔗 Korelasi</button>
+      </div>
+    </div>
+
+    <!-- Correlation Selector panel -->
+    <div v-if="activeTab === 'correlation'" class="correlation-panel">
+      <span class="panel-title">Pilih Parameter Korelasi:</span>
+      <div class="checkbox-grid">
+        <label v-for="opt in checkboxOptions" :key="opt.val" class="checkbox-label" :style="{ '--opt-color': opt.color }">
+          <input type="checkbox" :value="opt.val" v-model="selectedParams" />
+          <span class="custom-box"></span>
+          {{ opt.label }}
+        </label>
       </div>
     </div>
     
-    <div class="chart-body">
+    <div class="chart-body flex-grow">
       <div v-if="logs.length === 0" class="empty-chart">
         <span class="icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
         </span>
         <p>Menunggu data log historis...</p>
+      </div>
+      <div v-else-if="activeTab === 'correlation' && selectedParams.length === 0" class="empty-chart">
+        <p>Silakan pilih minimal 1 parameter untuk menampilkan grafik korelasi.</p>
       </div>
       <div v-else class="chart-wrapper">
         <apexchart 
@@ -363,7 +519,7 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 8px;
   flex-wrap: wrap;
   gap: 16px;
 }
@@ -374,13 +530,10 @@ onMounted(() => {
   gap: 10px;
 }
 
-.chart-icon {
-  font-size: 1.2rem;
-}
-
 h3 {
   font-size: 1.1rem;
   font-weight: 700;
+  margin: 0;
 }
 
 .tabs-container {
@@ -410,22 +563,103 @@ h3 {
 
 .tab-btn.active {
   background: var(--bg-panel-solid);
-  color: var(--accent-primary);
+  color: var(--accent-cyan);
   box-shadow: 0 4px 10px -4px rgba(0, 0, 0, 0.2);
+}
+
+.tab-btn-special.active {
+  color: #ff5e36 !important;
+  border-color: #ff5e36;
+}
+
+.correlation-panel {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--border-color);
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+
+.panel-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  display: block;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px 20px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  position: relative;
+  user-select: none;
+  transition: color 0.2s;
+}
+
+.checkbox-label input {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0; width: 0;
+}
+
+.custom-box {
+  height: 16px;
+  width: 16px;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  display: inline-block;
+  transition: all 0.2s;
+}
+
+.checkbox-label:hover .custom-box {
+  border-color: var(--opt-color);
+}
+
+.checkbox-label input:checked ~ .custom-box {
+  background-color: var(--opt-color);
+  border-color: var(--opt-color);
+  box-shadow: 0 0 8px var(--opt-color);
+}
+
+.checkbox-label input:checked ~ .custom-box::after {
+  content: "";
+  display: block;
+  margin-left: 5px;
+  margin-top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.checkbox-label input:checked {
+  color: var(--text-primary);
 }
 
 .chart-body {
   flex-grow: 1;
-  min-height: 250px;
+  min-height: 280px;
   position: relative;
 }
 
 .chart-wrapper {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  top: 0; left: 0; right: 0; bottom: 0;
 }
 
 .empty-chart {
@@ -528,9 +762,9 @@ h3 {
 }
 
 .btn-export:hover:not(:disabled) {
-  background: var(--accent-light);
-  color: var(--accent-primary);
-  border-color: var(--accent-primary);
+  background: rgba(0, 210, 255, 0.1);
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
 }
 
 .btn-export:disabled {

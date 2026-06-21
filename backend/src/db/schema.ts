@@ -49,6 +49,9 @@ export const devices = pgTable("devices", {
   setpointXVel: doublePrecision("setpoint_x_vel").notNull().default(0),
   setpointZAcc: doublePrecision("setpoint_z_acc").notNull().default(0),
   setpointXAcc: doublePrecision("setpoint_x_acc").notNull().default(0),
+  setpointPressure: doublePrecision("setpoint_pressure").notNull().default(0),
+  setpointFlow: doublePrecision("setpoint_flow").notNull().default(0),
+  setpointLevel: doublePrecision("setpoint_level").notNull().default(0),
   // Phase #4: Modbus configuration (nullable - device works without modbus config)
   connectionId: integer("connection_id").references(() => modbusConnections.id, { onDelete: "set null" }),
   regTemp: integer("reg_temp"), // Holding register address for Temperature
@@ -56,6 +59,9 @@ export const devices = pgTable("devices", {
   regXVel: integer("reg_x_vel"), // Register address for X-Velocity
   regZAcc: integer("reg_z_acc"), // Register address for Z-Acceleration
   regXAcc: integer("reg_x_acc"), // Register address for X-Acceleration
+  regPressure: integer("reg_pressure"), // Register address for Pressure
+  regFlow: integer("reg_flow"), // Register address for Flow
+  regLevel: integer("reg_level"), // Register address for Level
   regDataType: text("reg_data_type").default("float32"), // 'int16' | 'uint16' | 'float32'
   regByteOrder: text("reg_byte_order").default("BE"), // 'BE' | 'LE'
   scaleTemp: doublePrecision("scale_temp").default(1.0),
@@ -63,6 +69,12 @@ export const devices = pgTable("devices", {
   scaleXVel: doublePrecision("scale_x_vel").default(1.0),
   scaleZAcc: doublePrecision("scale_z_acc").default(1.0),
   scaleXAcc: doublePrecision("scale_x_acc").default(1.0),
+  scalePressure: doublePrecision("scale_pressure").default(1.0),
+  scaleFlow: doublePrecision("scale_flow").default(1.0),
+  scaleLevel: doublePrecision("scale_level").default(1.0),
+  offsetPressure: doublePrecision("offset_pressure").default(0.0),
+  offsetFlow: doublePrecision("offset_flow").default(0.0),
+  offsetLevel: doublePrecision("offset_level").default(0.0),
 });
 
 export type Device = typeof devices.$inferSelect;
@@ -77,6 +89,9 @@ export const sensorLogs = pgTable("sensor_logs", {
   xVelocity: doublePrecision("x_velocity").notNull(),
   zAcceleration: doublePrecision("z_acceleration").notNull(),
   xAcceleration: doublePrecision("x_acceleration").notNull(),
+  pressure: doublePrecision("pressure").notNull().default(0),
+  flow: doublePrecision("flow").notNull().default(0),
+  level: doublePrecision("level").notNull().default(0),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
 });
 
@@ -87,7 +102,7 @@ export type NewSensorLog = typeof sensorLogs.$inferInsert;
 export const alarms = pgTable("alarms", {
   id: serial("id").primaryKey(),
   deviceId: integer("device_id").notNull().references(() => devices.id, { onDelete: "cascade" }),
-  parameter: text("parameter").notNull(), // 'temperature' | 'zVelocity' | 'xVelocity' | 'zAcceleration' | 'xAcceleration'
+  parameter: text("parameter").notNull(), // 'temperature' | 'zVelocity' | 'xVelocity' | 'zAcceleration' | 'xAcceleration' | 'pressure' | 'flow' | 'level'
   value: doublePrecision("value").notNull(),
   threshold: doublePrecision("threshold").notNull(),
   status: text("status").notNull().default("active"), // 'active' | 'acknowledged'

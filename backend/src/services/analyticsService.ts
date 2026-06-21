@@ -52,6 +52,9 @@ export class AnalyticsService {
         sl.x_velocity as "xVelocity",
         sl.z_acceleration as "zAcceleration",
         sl.x_acceleration as "xAcceleration",
+        sl.pressure,
+        sl.flow,
+        sl.level,
         sl.timestamp
       FROM ${sensorLogs} sl
       ORDER BY sl.device_id, sl.timestamp DESC
@@ -89,21 +92,58 @@ export class AnalyticsService {
     for (const device of devicesList) {
       const tel = latestLogsMap.get(device.id);
       
-      const tLimit = device.setpointTemp || 70;
-      const zvLimit = device.setpointZVel || 7.1;
-      const xvLimit = device.setpointXVel || 7.1;
-
       let status = "safe";
 
       if (tel) {
-        const t = tel.temperature || 0;
-        const zv = tel.zVelocity || 0;
-        const xv = tel.xVelocity || 0;
+        const limits = {
+          temperature: device.setpointTemp || 70,
+          zVelocity: device.setpointZVel || 7.1,
+          xVelocity: device.setpointXVel || 7.1,
+          zAcceleration: device.setpointZAcc || 10,
+          xAcceleration: device.setpointXAcc || 10,
+          pressure: device.setpointPressure || 5.0,
+          flow: device.setpointFlow || 50.0,
+          level: device.setpointLevel || 800.0,
+        };
 
-        if (t >= tLimit || zv >= zvLimit || xv >= xvLimit) {
+        const readings = {
+          temperature: tel.temperature,
+          zVelocity: tel.zVelocity,
+          xVelocity: tel.xVelocity,
+          zAcceleration: tel.zAcceleration,
+          xAcceleration: tel.xAcceleration,
+          pressure: tel.pressure,
+          flow: tel.flow,
+          level: tel.level,
+        };
+
+        let isCritical = false;
+        let isWarning = false;
+
+        for (const [key, value] of Object.entries(readings)) {
+          if (value === null || value === undefined) continue;
+          const limit = (limits as any)[key];
+          if (limit <= 0) continue;
+
+          if (key === "level") {
+            if (value < limit) {
+              isCritical = true;
+            } else if (value < limit * 1.25) {
+              isWarning = true;
+            }
+          } else {
+            if (value >= limit) {
+              isCritical = true;
+            } else if (value >= limit * 0.8) {
+              isWarning = true;
+            }
+          }
+        }
+
+        if (isCritical) {
           status = "critical";
           criticalCount++;
-        } else if (t >= tLimit * 0.8 || zv >= zvLimit * 0.7 || xv >= xvLimit * 0.7) {
+        } else if (isWarning) {
           status = "warning";
           warningCount++;
         }
@@ -111,7 +151,7 @@ export class AnalyticsService {
         // =========================================================================
         // CARD B: ISO 10816 COMPLIANCE STATUS (Using dynamic config boundaries)
         // =========================================================================
-        const maxVel = Math.max(zv, xv);
+        const maxVel = Math.max(tel.zVelocity || 0, tel.xVelocity || 0);
         if (maxVel < batasBawahZoneB) {
           complianceDetails.zoneA++;
         } else if (maxVel < batasBawahZoneC) {
@@ -205,6 +245,9 @@ export class AnalyticsService {
         xVelocity: device.setpointXVel || 7.1,
         zAcceleration: device.setpointZAcc || 10,
         xAcceleration: device.setpointXAcc || 10,
+        pressure: device.setpointPressure || 5.0,
+        flow: device.setpointFlow || 50.0,
+        level: device.setpointLevel || 800.0,
       };
 
       const readings = {
@@ -213,6 +256,9 @@ export class AnalyticsService {
         xVelocity: tel.xVelocity || 0,
         zAcceleration: tel.zAcceleration || 0,
         xAcceleration: tel.xAcceleration || 0,
+        pressure: tel.pressure || 0,
+        flow: tel.flow || 0,
+        level: tel.level || 0,
       };
 
       let maxRatio = 0;
@@ -223,7 +269,12 @@ export class AnalyticsService {
       for (const [key, value] of Object.entries(readings)) {
         const limit = (limits as any)[key];
         if (limit > 0) {
-          const ratio = (value / limit) * 100;
+          let ratio = 0;
+          if (key === "level") {
+            ratio = value < limit ? ((limit - value) / limit) * 100 : 0;
+          } else {
+            ratio = (value / limit) * 100;
+          }
           if (ratio > maxRatio) {
             maxRatio = ratio;
             worstParam = key;

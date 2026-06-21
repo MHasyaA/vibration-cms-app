@@ -13,6 +13,9 @@ interface SensorReading {
   xVelocity: number;
   zAcceleration: number;
   xAcceleration: number;
+  pressure: number;
+  flow: number;
+  level: number;
 }
 
 /**
@@ -248,7 +251,13 @@ export class ModbusPollingService {
 
       for (const device of connectedDevices) {
         // Skip devices that don't have register mapping configured
-        if (device.regTemp === null && device.regZVel === null) {
+        if (
+          device.regTemp === null &&
+          device.regZVel === null &&
+          device.regPressure === null &&
+          device.regFlow === null &&
+          device.regLevel === null
+        ) {
           continue;
         }
         totalDevicesWithRegs++;
@@ -309,7 +318,7 @@ export class ModbusPollingService {
   }
 
   /**
-   * Read all 5 parameters from a device's holding registers.
+   * Read all 8 parameters from a device's holding registers.
    * Supports int16, uint16, and float32 data types with BE/LE byte order.
    */
   private async readDeviceRegisters(client: any, device: any): Promise<SensorReading> {
@@ -319,7 +328,12 @@ export class ModbusPollingService {
     // float32 uses 2 registers per value, int16/uint16 uses 1 register per value
     const regsPerValue = dataType === "float32" ? 2 : 1;
 
-    async function readParam(regAddr: number | null, scale: number | null | undefined): Promise<number> {
+    async function readParam(
+      regAddr: number | null,
+      scale: number | null | undefined,
+      offset?: number | null | undefined,
+      useDivisorFormula = false
+    ): Promise<number> {
       if (regAddr === null || regAddr === undefined) return 0;
       const result = await client.readHoldingRegisters(regAddr, regsPerValue);
       const buf = Buffer.from(result.buffer);
@@ -333,18 +347,44 @@ export class ModbusPollingService {
       }
       
       const factor = (scale !== null && scale !== undefined) ? scale : 1.0;
-      return rawVal * factor;
+      if (useDivisorFormula) {
+        const offVal = (offset !== null && offset !== undefined) ? offset : 0.0;
+        return (rawVal - offVal) / factor;
+      } else {
+        return rawVal * factor;
+      }
     }
 
-    const [temperature, zVelocity, xVelocity, zAcceleration, xAcceleration] = await Promise.all([
+    const [
+      temperature,
+      zVelocity,
+      xVelocity,
+      zAcceleration,
+      xAcceleration,
+      pressure,
+      flow,
+      level
+    ] = await Promise.all([
       readParam(device.regTemp, device.scaleTemp),
       readParam(device.regZVel, device.scaleZVel),
       readParam(device.regXVel, device.scaleXVel),
       readParam(device.regZAcc, device.scaleZAcc),
       readParam(device.regXAcc, device.scaleXAcc),
+      readParam(device.regPressure, device.scalePressure, device.offsetPressure, true),
+      readParam(device.regFlow, device.scaleFlow, device.offsetFlow, true),
+      readParam(device.regLevel, device.scaleLevel, device.offsetLevel, true),
     ]);
 
-    return { temperature, zVelocity, xVelocity, zAcceleration, xAcceleration };
+    return {
+      temperature,
+      zVelocity,
+      xVelocity,
+      zAcceleration,
+      xAcceleration,
+      pressure,
+      flow,
+      level
+    };
   }
 
   /**

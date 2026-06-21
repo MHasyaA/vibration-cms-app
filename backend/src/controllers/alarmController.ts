@@ -35,6 +35,30 @@ export const alarmController = new Elysia({ prefix: "/alarms" })
     }
   )
   
+  
+  // PUT /api/alarms/acknowledge-all - Confirm/Acknowledge all alarms
+  .put(
+    "/acknowledge-all",
+    async () => {
+      try {
+        const updated = await alarmService.acknowledgeAllAlarms();
+        return {
+          success: true,
+          message: "All alarms acknowledged successfully",
+          data: updated,
+        };
+      } catch (error: any) {
+        return {
+          success: false,
+          message: error.message || "Failed to acknowledge all alarms",
+        };
+      }
+    },
+    {
+      beforeHandle: (c: any) => checkAuth(c),
+    }
+  )
+
   // PUT /api/alarms/:id/acknowledge - Confirm/Acknowledge an alarm
   .put(
     "/:id/acknowledge",

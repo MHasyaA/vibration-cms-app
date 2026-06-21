@@ -14,6 +14,9 @@ export class DataService {
     xVelocity: number;
     zAcceleration: number;
     xAcceleration: number;
+    pressure: number;
+    flow: number;
+    level: number;
   }) {
     // 1. Check if device exists
     const [device] = await db
@@ -37,6 +40,9 @@ export class DataService {
       xVelocity: data.xVelocity,
       zAcceleration: data.zAcceleration,
       xAcceleration: data.xAcceleration,
+      pressure: data.pressure,
+      flow: data.flow,
+      level: data.level,
     });
 
     return {
@@ -57,6 +63,9 @@ export class DataService {
         sl.x_velocity as "xVelocity",
         sl.z_acceleration as "zAcceleration",
         sl.x_acceleration as "xAcceleration",
+        sl.pressure,
+        sl.flow,
+        sl.level,
         sl.timestamp,
         d.nama_sensor as "namaSensor",
         d.lokasi as "lokasi"
