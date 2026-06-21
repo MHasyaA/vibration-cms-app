@@ -586,7 +586,7 @@ async function fetchAnalyticsSummary() {
         const limit = (limits as any)[key];
         if (limit > 0) {
           let ratio = 0;
-          if (key === 'level') {
+          if (key === 'level' || key === 'pressure' || key === 'flow') {
             ratio = value < limit ? ((limit - value) / limit) * 100 : 0;
           } else {
             ratio = (value / limit) * 100;
@@ -920,7 +920,7 @@ function getDeviceStatus(deviceId: number) {
     const limit = (limits as any)[key];
     if (limit <= 0) continue;
     
-    if (key === 'level') {
+    if (key === 'level' || key === 'pressure' || key === 'flow') {
       if (value < limit) {
         isCritical = true;
       } else if (value < limit * 1.25) {

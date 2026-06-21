@@ -11,10 +11,10 @@ const props = defineProps<{
 
 const status = computed(() => {
   if (props.value === null || props.value === undefined || !props.setpoint) return 'safe';
-  const thresholdWarning = props.setpoint * 0.7;
   const thresholdCritical = props.setpoint;
-  if (props.value >= thresholdCritical) return 'critical';
-  if (props.value >= thresholdWarning) return 'warning';
+  const thresholdWarning = props.setpoint * 1.25;
+  if (props.value < thresholdCritical) return 'critical';
+  if (props.value < thresholdWarning) return 'warning';
   return 'safe';
 });
 

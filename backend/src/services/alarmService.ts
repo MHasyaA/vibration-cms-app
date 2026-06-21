@@ -78,12 +78,24 @@ export class AlarmService {
     // Helper to check standard threshold breaches
     const checkBreach = (paramName: string, currentValue: number, setpoint: number) => {
       // If setpoint is 0, we treat it as disabled/no-limit
-      if (setpoint > 0 && currentValue > setpoint) {
-        breaches.push({
-          parameter: paramName,
-          value: currentValue,
-          threshold: setpoint,
-        });
+      if (setpoint <= 0) return;
+      
+      if (paramName === "level" || paramName === "pressure" || paramName === "flow") {
+        if (currentValue < setpoint) {
+          breaches.push({
+            parameter: paramName,
+            value: currentValue,
+            threshold: setpoint,
+          });
+        }
+      } else {
+        if (currentValue > setpoint) {
+          breaches.push({
+            parameter: paramName,
+            value: currentValue,
+            threshold: setpoint,
+          });
+        }
       }
     };
 
