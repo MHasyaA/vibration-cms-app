@@ -145,14 +145,24 @@ const statusBg = computed(() => {
         <rect x="252" y="14" width="16" height="14" rx="1" fill="#475569" stroke="#64748b" stroke-width="1" />
         <path d="M 246 28 L 274 28 L 268 33 L 252 33 Z" fill="#334155" stroke="#475569" stroke-width="1" />
 
-        <!-- 6. Pulsing Radar Sensor Wave -->
+        <!-- 6. Pulsing Radar Sensor Wave (Glow + Beam) -->
         <line 
           x1="260" 
           y1="33" 
           x2="260" 
           :y2="270 - fillHeight" 
-          stroke="#10b981" 
-          stroke-width="1.5" 
+          stroke="#ff3333" 
+          stroke-width="4" 
+          opacity="0.3"
+          class="radar-beam" 
+        />
+        <line 
+          x1="260" 
+          y1="33" 
+          x2="260" 
+          :y2="270 - fillHeight" 
+          stroke="#ff3333" 
+          stroke-width="1.8" 
           stroke-dasharray="4 4" 
           class="radar-beam" 
         />
