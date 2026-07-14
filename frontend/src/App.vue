@@ -1700,27 +1700,25 @@ onUnmounted(() => {
             <!-- Top Section: Dynamic SVG Viewport & Analytics Cards -->
             <div class="detail-top-section">
               <div class="svg-wrapper">
-                <Transition name="fade" mode="out-in">
-                  <ScadaMotorSvg 
-                    v-if="activeScadaModel === 'motor'"
-                    :sensorName="selectedDeviceDetails.namaSensor"
-                    :velocityZ="selectedDeviceTelemetry?.zVelocity"
-                    :velocityX="selectedDeviceTelemetry?.xVelocity"
-                    :temperature="selectedDeviceTelemetry?.temperature"
-                    :setpointZ="selectedDeviceDetails.setpointZVel"
-                    :setpointX="selectedDeviceDetails.setpointXVel"
-                    :setpointTemp="selectedDeviceDetails.setpointTemp"
-                  />
-                  <ScadaWaterTankSvg
-                    v-else
-                    :sensorName="selectedDeviceDetails.namaSensor"
-                    :level="selectedDeviceTelemetry?.level"
-                    :setpointLevel="selectedDeviceDetails.setpointLevel"
-                    :flow="selectedDeviceTelemetry?.flow"
-                    :pressure="selectedDeviceTelemetry?.pressure"
-                    :temperature="selectedDeviceTelemetry?.temperature"
-                  />
-                </Transition>
+                <ScadaMotorSvg 
+                  v-if="activeScadaModel === 'motor'"
+                  :sensorName="selectedDeviceDetails.namaSensor"
+                  :velocityZ="selectedDeviceTelemetry?.zVelocity"
+                  :velocityX="selectedDeviceTelemetry?.xVelocity"
+                  :temperature="selectedDeviceTelemetry?.temperature"
+                  :setpointZ="selectedDeviceDetails.setpointZVel"
+                  :setpointX="selectedDeviceDetails.setpointXVel"
+                  :setpointTemp="selectedDeviceDetails.setpointTemp"
+                />
+                <ScadaWaterTankSvg
+                  v-else
+                  :sensorName="selectedDeviceDetails.namaSensor"
+                  :level="selectedDeviceTelemetry?.level"
+                  :setpointLevel="selectedDeviceDetails.setpointLevel"
+                  :flow="selectedDeviceTelemetry?.flow"
+                  :pressure="selectedDeviceTelemetry?.pressure"
+                  :temperature="selectedDeviceTelemetry?.temperature"
+                />
               </div>
               
               <div class="detail-metrics-grid">
