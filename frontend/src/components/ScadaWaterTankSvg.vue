@@ -151,8 +151,8 @@ const statusBg = computed(() => {
           y1="33" 
           x2="260" 
           :y2="270 - fillHeight" 
-          stroke="#10b981" 
-          stroke-width="1.5" 
+          stroke="#ff3333" 
+          stroke-width="1.8" 
           stroke-dasharray="4 4" 
           class="radar-beam" 
         />
