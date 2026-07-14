@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import MetricCard from './components/MetricCard.vue';
 import ScadaMotorSvg from './components/ScadaMotorSvg.vue';
+import ScadaWaterTankSvg from './components/ScadaWaterTankSvg.vue';
 import TrendLineChart from './components/TrendLineChart.vue';
 import DeviceModal from './components/DeviceModal.vue';
 import ModbusConfigModal from './components/ModbusConfigModal.vue';
@@ -39,6 +40,8 @@ const activeAlarms = ref<any[]>([]);
 const alarmHistory = ref<any[]>([]);
 const selectedDeviceId = ref<number | null>(null);
 const historicalLogs = ref<any[]>([]);
+const activeScadaModel = ref<'motor' | 'tank'>('motor');
+const chartActiveTab = ref<'velZ' | 'velX' | 'accZ' | 'accX' | 'temp' | 'pressure' | 'flow' | 'level' | 'correlation'>('velZ');
 
 // Analytics Summary Data
 const totalDevicesCount = ref(0);
@@ -1112,6 +1115,8 @@ function stopPolling() {
 // Handle Detail Sensor click from Sidebar/Overview
 async function selectDevice(deviceId: number) {
   selectedDeviceId.value = deviceId;
+  activeScadaModel.value = 'motor';
+  chartActiveTab.value = 'velZ';
   const wasAlreadyDetail = activePage.value === 'detail';
   activePage.value = 'detail';
   if (wasAlreadyDetail) {
@@ -1692,18 +1697,30 @@ onUnmounted(() => {
           </div>
           
           <div v-else class="detail-stack-layout">
-            <!-- Top Section: Motor SVG & Analytics Cards -->
+            <!-- Top Section: Dynamic SVG Viewport & Analytics Cards -->
             <div class="detail-top-section">
               <div class="svg-wrapper">
-                <ScadaMotorSvg 
-                  :sensorName="selectedDeviceDetails.namaSensor"
-                  :velocityZ="selectedDeviceTelemetry?.zVelocity"
-                  :velocityX="selectedDeviceTelemetry?.xVelocity"
-                  :temperature="selectedDeviceTelemetry?.temperature"
-                  :setpointZ="selectedDeviceDetails.setpointZVel"
-                  :setpointX="selectedDeviceDetails.setpointXVel"
-                  :setpointTemp="selectedDeviceDetails.setpointTemp"
-                />
+                <Transition name="fade" mode="out-in">
+                  <ScadaMotorSvg 
+                    v-if="activeScadaModel === 'motor'"
+                    :sensorName="selectedDeviceDetails.namaSensor"
+                    :velocityZ="selectedDeviceTelemetry?.zVelocity"
+                    :velocityX="selectedDeviceTelemetry?.xVelocity"
+                    :temperature="selectedDeviceTelemetry?.temperature"
+                    :setpointZ="selectedDeviceDetails.setpointZVel"
+                    :setpointX="selectedDeviceDetails.setpointXVel"
+                    :setpointTemp="selectedDeviceDetails.setpointTemp"
+                  />
+                  <ScadaWaterTankSvg
+                    v-else
+                    :sensorName="selectedDeviceDetails.namaSensor"
+                    :level="selectedDeviceTelemetry?.level"
+                    :setpointLevel="selectedDeviceDetails.setpointLevel"
+                    :flow="selectedDeviceTelemetry?.flow"
+                    :pressure="selectedDeviceTelemetry?.pressure"
+                    :temperature="selectedDeviceTelemetry?.temperature"
+                  />
+                </Transition>
               </div>
               
               <div class="detail-metrics-grid">
@@ -1713,6 +1730,9 @@ onUnmounted(() => {
                   unit="mm/s"
                   :setpoint="selectedDeviceDetails.setpointZVel"
                   icon="<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M2 12h4l3-9 5 18 3-9h5'/></svg>"
+                  class="clickable-card"
+                  :class="{ 'active-card': chartActiveTab === 'velZ' }"
+                  @click="chartActiveTab = 'velZ'; activeScadaModel = 'motor'"
                 />
                 <MetricCard 
                   title="Velocity X"
@@ -1720,6 +1740,9 @@ onUnmounted(() => {
                   unit="mm/s"
                   :setpoint="selectedDeviceDetails.setpointXVel"
                   icon="<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M2 12h4l3-9 5 18 3-9h5'/></svg>"
+                  class="clickable-card"
+                  :class="{ 'active-card': chartActiveTab === 'velX' }"
+                  @click="chartActiveTab = 'velX'; activeScadaModel = 'motor'"
                 />
                 <MetricCard 
                   title="Accel Z"
@@ -1727,6 +1750,9 @@ onUnmounted(() => {
                   unit="mm/s²"
                   :setpoint="selectedDeviceDetails.setpointZAcc"
                   icon="<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/></svg>"
+                  class="clickable-card"
+                  :class="{ 'active-card': chartActiveTab === 'accZ' }"
+                  @click="chartActiveTab = 'accZ'; activeScadaModel = 'motor'"
                 />
                 <MetricCard 
                   title="Accel X"
@@ -1734,6 +1760,9 @@ onUnmounted(() => {
                   unit="mm/s²"
                   :setpoint="selectedDeviceDetails.setpointXAcc"
                   icon="<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/></svg>"
+                  class="clickable-card"
+                  :class="{ 'active-card': chartActiveTab === 'accX' }"
+                  @click="chartActiveTab = 'accX'; activeScadaModel = 'motor'"
                 />
                 <MetricCard 
                   title="Core Temp"
@@ -1742,6 +1771,9 @@ onUnmounted(() => {
                   :setpoint="selectedDeviceDetails.setpointTemp"
                   icon="<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z'/></svg>"
                   style="grid-column: span 2;"
+                  class="clickable-card"
+                  :class="{ 'active-card': chartActiveTab === 'temp' }"
+                  @click="chartActiveTab = 'temp'; activeScadaModel = 'motor'"
                 />
                 <GaugeCard 
                   title="Pressure"
@@ -1749,6 +1781,9 @@ onUnmounted(() => {
                   unit="Bar"
                   :setpoint="selectedDeviceDetails.setpointPressure"
                   icon="<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><path d='M12 6v6l4 2'/></svg>"
+                  class="clickable-card"
+                  :class="{ 'active-card': chartActiveTab === 'pressure' }"
+                  @click="chartActiveTab = 'pressure'; activeScadaModel = 'motor'"
                 />
                 <GaugeCard 
                   title="Flow Rate"
@@ -1756,6 +1791,9 @@ onUnmounted(() => {
                   unit="L/min"
                   :setpoint="selectedDeviceDetails.setpointFlow"
                   icon="<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'/></svg>"
+                  class="clickable-card"
+                  :class="{ 'active-card': chartActiveTab === 'flow' }"
+                  @click="chartActiveTab = 'flow'; activeScadaModel = 'motor'"
                 />
               </div>
               <LevelCard 
@@ -1764,6 +1802,9 @@ onUnmounted(() => {
                 unit="mm"
                 :setpoint="selectedDeviceDetails.setpointLevel"
                 icon="<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 22a7 7 0 0 0 5-12.2l-5-5.8-5 5.8A7 7 0 0 0 12 22z'/></svg>"
+                class="clickable-card"
+                :class="{ 'active-card': chartActiveTab === 'level' }"
+                @click="chartActiveTab = 'level'; activeScadaModel = 'tank'"
               />
             </div>
             
@@ -1780,6 +1821,12 @@ onUnmounted(() => {
                 :setpointFlow="selectedDeviceDetails.setpointFlow"
                 :setpointLevel="selectedDeviceDetails.setpointLevel"
                 :isDarkTheme="false"
+                :activeTab="chartActiveTab"
+                @update:activeTab="(tab) => {
+                  chartActiveTab = tab;
+                  if (tab === 'level') activeScadaModel = 'tank';
+                  else activeScadaModel = 'motor';
+                }"
                 @range-change="handleRangeChange"
               />
             </div>
@@ -3302,6 +3349,34 @@ onUnmounted(() => {
 .svg-wrapper {
   width: 100%;
   height: 100%;
+}
+
+/* Clickable card effects for metrics & SCADA integration */
+.clickable-card {
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.clickable-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(6, 182, 212, 0.45) !important;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25) !important;
+}
+
+.clickable-card.active-card {
+  border-color: var(--accent-cyan) !important;
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.25) !important;
+}
+
+/* Vue Fade Transition for SCADA Morphs */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 
 .detail-bottom-section {

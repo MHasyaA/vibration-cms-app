@@ -23,14 +23,26 @@ const props = defineProps<{
   setpointFlow?: number | null | undefined;
   setpointLevel?: number | null | undefined;
   isDarkTheme: boolean;
+  activeTab?: TabType;
 }>();
 
 const emit = defineEmits<{
   (e: 'range-change', payload: { start?: string; end?: string }): void;
+  (e: 'update:activeTab', tab: TabType): void;
 }>();
 
 type TabType = 'velZ' | 'velX' | 'accZ' | 'accX' | 'temp' | 'pressure' | 'flow' | 'level' | 'correlation';
-const activeTab = ref<TabType>('velZ');
+const activeTab = ref<TabType>(props.activeTab || 'velZ');
+
+watch(() => props.activeTab, (newVal) => {
+  if (newVal && newVal !== activeTab.value) {
+    activeTab.value = newVal;
+  }
+});
+
+watch(activeTab, (newVal) => {
+  emit('update:activeTab', newVal);
+});
 
 const timeRange = ref<'last_hour' | 'last_day' | 'last_week' | 'last_month' | 'custom'>('last_hour');
 const customStart = ref('');
